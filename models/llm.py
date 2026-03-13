@@ -2,16 +2,16 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from config.config import GEMINI_API_KEY, GEMINI_MODEL
+from langchain_groq import ChatGroq
+from config.config import GROQ_API_KEY, GROQ_MODEL
 
 
 def get_llm():
-    """Return configured Gemini chat model."""
+    """Return configured Groq chat model."""
     try:
-        return ChatGoogleGenerativeAI(
-            model=GEMINI_MODEL,
-            google_api_key=GEMINI_API_KEY,
+        return ChatGroq(
+            api_key=GROQ_API_KEY,
+            model=GROQ_MODEL,
             temperature=0.3,
         )
     except Exception as e:

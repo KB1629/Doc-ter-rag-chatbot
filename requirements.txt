@@ -1,0 +1,13 @@
+streamlit>=1.35.0
+langchain-google-genai>=1.0.10
+langchain-groq>=0.1.9
+langchain-core>=0.2.0
+sentence-transformers>=3.0.0
+chromadb>=0.5.0
+pymupdf4llm>=0.0.17
+tavily-python>=0.3.3
+streamlit-mic-recorder>=0.0.8
+edge-tts>=6.1.12
+python-dotenv>=1.0.1
+SpeechRecognition>=3.10.4
+pydub>=0.25.1

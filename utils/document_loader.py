@@ -23,7 +23,7 @@ def parse_pdf(uploaded_file) -> list[dict]:
         chunks = []
         for page in pages:
             text = page["text"].strip()
-            page_num = page["metadata"]["page"]
+            page_num = page["metadata"]["page_number"]
             if not text:
                 continue
             for chunk in _split_text(text, uploaded_file.name, page_num):

@@ -19,13 +19,16 @@ st.markdown("""
     .main { background-color: #0f1117; }
     .stChatMessage { border-radius: 12px; margin-bottom: 8px; }
     .source-badge {
-        display: inline-block; padding: 2px 10px; border-radius: 12px;
-        font-size: 12px; font-weight: 600; margin-bottom: 6px;
+        display: inline-block; padding: 2px 8px; border-radius: 8px;
+        font-size: 11px; font-weight: 500; margin-bottom: 4px;
+        opacity: 0.6;
     }
     .badge-docs { background: #1a3a2a; color: #4ade80; }
     .badge-web  { background: #1a2a3a; color: #60a5fa; }
     .badge-both { background: #2a1a3a; color: #c084fc; }
     .badge-llm  { background: #2a2a1a; color: #facc15; }
+    .block-container { padding-bottom: 100px; }
+    .stAudio { display: none; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -66,6 +69,7 @@ def handle_upload(uploaded_files):
 
 
 def render_sidebar():
+    audio = None
     with st.sidebar:
         st.title("🩺 Doc-tor AI")
         st.caption("Upload PDFs and ask anything.")
@@ -120,11 +124,11 @@ def render_message(msg: dict):
             st.markdown(BADGE.get(source, ""), unsafe_allow_html=True)
         st.markdown(msg["content"])
         if msg["role"] == "assistant":
-            if st.button("🔊", key=f"tts_{msg['id']}"):
-                with st.spinner("Generating audio..."):
+            if st.button("🔊 Listen", key=f"tts_{msg['id']}"):
+                with st.spinner("Playing..."):
                     try:
                         audio = text_to_speech(msg["content"])
-                        st.audio(audio, format="audio/mp3")
+                        st.audio(audio, format="audio/mp3", autoplay=True)
                     except Exception as e:
                         st.error(f"TTS error: {e}")
 
@@ -138,6 +142,10 @@ def main():
         st.session_state.doc_summaries = {}
     if "msg_counter" not in st.session_state:
         st.session_state.msg_counter = 0
+    if "last_audio_id" not in st.session_state:
+        st.session_state.last_audio_id = None
+    if "heard_text" not in st.session_state:
+        st.session_state.heard_text = ""
 
     mode = render_sidebar()
     has_docs = bool(get_stored_sources())
@@ -148,19 +156,30 @@ def main():
     for msg in st.session_state.messages:
         render_message(msg)
 
-    # Voice input
-    audio = mic_recorder(start_prompt="🎙️ Record", stop_prompt="⏹️ Stop", key="mic")
+    # Mic recorder sits just above the chat input bar
+    audio = mic_recorder(start_prompt="🎙️ Click to speak", stop_prompt="⏹️ Stop recording", key="mic")
+
+    # Voice input + text input
+    user_input = st.chat_input("Ask anything... (or use mic above ☝️)")
+
     voice_query = ""
-    if audio and audio.get("bytes"):
+    if audio and audio.get("bytes") and audio.get("id") != st.session_state.get("last_audio_id"):
+        st.session_state.last_audio_id = audio.get("id")
         with st.spinner("Transcribing..."):
             try:
                 voice_query = speech_to_text(audio["bytes"])
                 if voice_query:
-                    st.info(f"🎙️ Heard: *{voice_query}*")
+                    st.session_state.heard_text = voice_query
             except Exception as e:
                 st.error(f"Transcription error: {e}")
 
-    user_input = st.chat_input("Ask anything...") or voice_query
+    if st.session_state.get("heard_text") and not voice_query:
+        st.session_state.heard_text = ""
+
+    if voice_query:
+        st.info(f"🎙️ Heard: *{voice_query}*")
+
+    user_input = user_input or voice_query
 
     if user_input:
         st.session_state.msg_counter += 1
@@ -191,11 +210,11 @@ def main():
             }
             st.session_state.messages.append(ai_msg)
 
-            if st.button("🔊", key=f"tts_{ai_msg['id']}"):
-                with st.spinner("Generating audio..."):
+            if st.button("🔊 Listen", key=f"tts_{ai_msg['id']}"):
+                with st.spinner("Playing..."):
                     try:
                         audio_out = text_to_speech(result["answer"])
-                        st.audio(audio_out, format="audio/mp3")
+                        st.audio(audio_out, format="audio/mp3", autoplay=True)
                     except Exception as e:
                         st.error(f"TTS error: {e}")
 

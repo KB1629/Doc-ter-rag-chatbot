@@ -58,8 +58,10 @@ def search(query: str) -> list[dict]:
 def clear_collection():
     """Delete all stored chunks (used when user clears chat/docs)."""
     try:
+        global _collection
         collection = _get_collection()
-        collection.delete(where={"source": {"$ne": ""}})
+        _client.delete_collection("documents")
+        _collection = _client.get_or_create_collection("documents")
     except Exception as e:
         raise RuntimeError(f"Failed to clear collection: {e}")
 
