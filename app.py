@@ -90,6 +90,9 @@ def render_sidebar():
                         st.write(st.session_state.doc_summaries[src])
 
         st.divider()
+        st.markdown("**🎙️ Voice Input**")
+        audio = mic_recorder(start_prompt="🎙️ Speak", stop_prompt="⏹️ Stop", key="mic")
+        st.divider()
         mode = st.radio("Response Mode", ["Concise", "Detailed"], index=1)
 
         st.divider()
@@ -114,7 +117,7 @@ def render_sidebar():
                 use_container_width=True,
             )
 
-    return mode.lower()
+    return mode.lower(), audio
 
 
 def render_message(msg: dict):
@@ -147,7 +150,7 @@ def main():
     if "heard_text" not in st.session_state:
         st.session_state.heard_text = ""
 
-    mode = render_sidebar()
+    mode, audio = render_sidebar()
     has_docs = bool(get_stored_sources())
 
     st.title("🩺 Doc-tor AI")
@@ -156,11 +159,8 @@ def main():
     for msg in st.session_state.messages:
         render_message(msg)
 
-    # Mic recorder sits just above the chat input bar
-    audio = mic_recorder(start_prompt="🎙️ Click to speak", stop_prompt="⏹️ Stop recording", key="mic")
-
-    # Voice input + text input
-    user_input = st.chat_input("Ask anything... (or use mic above ☝️)")
+    # Chat input pinned to bottom
+    user_input = st.chat_input("Ask anything...")
 
     voice_query = ""
     if audio and audio.get("bytes") and audio.get("id") != st.session_state.get("last_audio_id"):
