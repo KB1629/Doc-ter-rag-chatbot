@@ -17,29 +17,6 @@ def _get_llm():
     return _llm
 
 
-def _llm_needs_web(query: str) -> bool:
-    """Ask LLM whether this query needs a live web search."""
-    try:
-        prompt = (
-            "You are a routing assistant for a chatbot that has access to "
-            "uploaded documents and live web search.\n\n"
-            "Decide if this question requires a LIVE WEB SEARCH to answer "
-            "accurately. Web search is needed for: current events, today's "
-            "date-sensitive info, real-time data, latest news, anything not "
-            "likely covered in static uploaded documents, or if the user explicitly "
-            "asks to search online, refer to the internet, or check the web.\n\n"
-            "Web search is NOT needed for: questions about uploaded document "
-            "content, general knowledge, definitions, historical facts, or "
-            "conceptual explanations.\n\n"
-            f"Question: {query}\n\n"
-            "Reply with ONLY one word: YES or NO."
-        )
-        response = _get_llm().invoke([HumanMessage(content=prompt)])
-        return response.content.strip().upper().startswith("Y")
-    except Exception:
-        return False
-
-
 def _refine_search_query(query: str, history: list[dict]) -> str:
     """Rewrite vague query into a precise web search query using conversation context."""
     try:

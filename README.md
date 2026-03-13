@@ -53,7 +53,7 @@ doc-tor-ai/
 | Component | Technology |
 |---|---|
 | Frontend | Streamlit |
-| LLM | Gemini 2.0 Flash (`langchain-google-genai`) |
+| LLM | Llama 3.3 70B (`langchain-groq` via Groq API) |
 | Embeddings | `BAAI/bge-small-en-v1.5` via `sentence-transformers` |
 | Vector Database | ChromaDB (local persistent storage) |
 | PDF Parsing | `pymupdf4llm` (markdown-aware PDF extraction) |
