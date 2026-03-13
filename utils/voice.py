@@ -6,12 +6,15 @@ import speech_recognition as sr
 
 async def _synthesize(text: str, voice: str) -> bytes:
     """Generate audio bytes from text using edge-tts."""
-    communicate = edge_tts.Communicate(text, voice)
-    audio_buffer = io.BytesIO()
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            audio_buffer.write(chunk["data"])
-    return audio_buffer.getvalue()
+    try:
+        communicate = edge_tts.Communicate(text, voice)
+        audio_buffer = io.BytesIO()
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_buffer.write(chunk["data"])
+        return audio_buffer.getvalue()
+    except Exception as e:
+        raise RuntimeError(f"TTS synthesis failed: {e}")
 
 
 def text_to_speech(text: str, voice: str = "en-US-JennyNeural") -> bytes:

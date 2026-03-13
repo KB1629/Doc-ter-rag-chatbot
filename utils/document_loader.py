@@ -37,14 +37,17 @@ def parse_pdf(uploaded_file) -> list[dict]:
 
 def _split_text(text: str, source: str, page: int) -> list[dict]:
     """Split text into overlapping chunks with metadata."""
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + CHUNK_SIZE
-        chunks.append({
-            "text": text[start:end],
-            "page": page + 1,
-            "source": source,
-        })
-        start += CHUNK_SIZE - CHUNK_OVERLAP
-    return chunks
+    try:
+        chunks = []
+        start = 0
+        while start < len(text):
+            end = start + CHUNK_SIZE
+            chunks.append({
+                "text": text[start:end],
+                "page": page + 1,
+                "source": source,
+            })
+            start += CHUNK_SIZE - CHUNK_OVERLAP
+        return chunks
+    except Exception as e:
+        raise RuntimeError(f"Failed to split text: {e}")

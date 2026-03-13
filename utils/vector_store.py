@@ -13,13 +13,16 @@ _collection = None
 
 def _get_collection():
     global _client, _collection
-    if _collection is None:
-        _client = chromadb.PersistentClient(
-            path=CHROMA_DIR,
-            settings=Settings(anonymized_telemetry=False)
-        )
-        _collection = _client.get_or_create_collection("documents")
-    return _collection
+    try:
+        if _collection is None:
+            _client = chromadb.PersistentClient(
+                path=CHROMA_DIR,
+                settings=Settings(anonymized_telemetry=False)
+            )
+            _collection = _client.get_or_create_collection("documents")
+        return _collection
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialise ChromaDB: {e}")
 
 
 def add_chunks(chunks: list[dict]):

@@ -1,10 +1,33 @@
-# 🩺 Doc-tor AI — Intelligent Research Chatbot
+# 🔬 Analyser Bot — Student Career Intelligence Assistant
 
-> Upload any PDF. Ask anything. Get cited, sourced answers — with voice.
+> Upload your marks, resume, and goals. Ask anything. Get data-driven answers with charts, citations, and live job market insights.
 
-**Doc-tor AI** is an intelligent conversational assistant that lets you chat with your documents. Upload one or multiple PDFs and ask questions in natural language. The assistant retrieves relevant context from your documents, searches the web when needed, and responds with inline citations so you always know where the answer came from.
+---
 
-Built for the NeoStats AI Engineer Case Study using Streamlit, Gemini 2.0 Flash, ChromaDB, and Tavily.
+## 🎯 Problem Statement
+
+Final-year engineering students face a common challenge: they have their semester mark sheets, a resume, and a career goal — but no clear picture of where they stand versus what top companies actually require. Manually comparing a personal profile against job descriptions across multiple sources is time-consuming and inconsistent.
+
+**Analyser Bot solves this** by letting students upload their data and documents, then ask natural language questions. The bot automatically decides whether to run SQL on the marks data, retrieve context from the resume PDF, search the web for live job requirements — or combine all three — and responds with cited, chart-backed answers.
+
+---
+
+## 💡 Example Use Case
+
+A student uploads:
+- `semester_marks.csv` — marks across 4 semesters
+- `resume.pdf` — their current resume
+- `career_goal.pdf` — a short document describing their target role
+
+They then ask:
+
+| Question | What happens |
+|---|---|
+| *"What is my average CGPA across all semesters?"* | SQL runs on CSV → bar chart generated |
+| *"Which semester did I score the highest?"* | SQL → ranked result table |
+| *"What skills are listed in my resume?"* | RAG retrieves from resume PDF |
+| *"What does Google require for a Data Engineer?"* | Live Tavily web search |
+| *"Am I ready for a Data Science internship? What should I improve?"* | All 3 sources combined → cited answer |
 
 ---
 
@@ -12,38 +35,44 @@ Built for the NeoStats AI Engineer Case Study using Streamlit, Gemini 2.0 Flash,
 
 | Feature | Description |
 |---|---|
-| 📄 Multi-PDF Upload | Upload multiple PDFs at once — all indexed into a single searchable knowledge base |
-| 🔍 RAG (Retrieval-Augmented Generation) | Answers grounded in your documents using vector similarity search |
-| 🌐 Live Web Search | Automatically searches the web for real-time or date-sensitive queries |
-| 🧠 Smart Query Routing | LLM decides whether to use documents, web, or both — in parallel |
-| 📝 Inline Citations | Every paragraph cites its source: `[📄 Page N of file.pdf]` or `[🌐 Title — URL]` |
-| 🎙️ Voice Input | Speak your question using the browser microphone |
-| 🔊 Voice Output | Listen to any response with a single click using high-quality TTS |
-| ⚡ Response Modes | Toggle between Concise (2-3 sentences) and Detailed (full explanation) |
-| 📋 Document Summary | Auto-generates a 3-line summary for every uploaded PDF |
-| ⬇️ Download Conversation | Export the full chat as a Markdown file |
-| 🏷️ Source Badge | Each response is labelled: Documents / Web / Both / General Knowledge |
+| 📊 Text-to-SQL on CSV | Upload marks or any structured data — the bot generates SQL, runs it, and explains results in plain English |
+| 📈 Auto Chart Generation | Bar charts and line graphs generated automatically from SQL results — zero manual configuration |
+| 📄 RAG on PDFs | Resume, goal statements, or any PDF indexed into ChromaDB for semantic retrieval |
+| 🌐 Live Web Search | Real-time Tavily search for job requirements, industry trends, company expectations |
+| 🤖 Smart Auto-Routing | LLM decides which source(s) to use per query — SQL, RAG, web, or all three |
+| 📝 Inline Citations | Every answer cites its source: `[📄 Page N]`, `[🌐 URL]`, `[📊 Data Analysis]` |
+| 🎙️ Voice Input | Speak questions via browser mic using `streamlit-mic-recorder` |
+| 🔊 Voice Output | Click Listen on any response for high-quality neural TTS via `edge-tts` |
+| ⚡ Concise / Detailed | Toggle response length — 2-sentence summary or full explanation |
+| 📋 Document Summaries | Auto-generated 3-line summary for every uploaded PDF |
+| ⬇️ Download Chat | Export full conversation as a Markdown file |
+| 🏷️ Source Badges | Each response labelled: Documents / Web / Data / General Knowledge |
 
 ---
 
 ## 🏗️ Project Structure
 
 ```
-doc-tor-ai/
+analyser-bot/
 ├── config/
-│   └── config.py          ← API keys and project-wide settings
+│   ├── __init__.py
+│   └── config.py          ← API keys loaded from .env, project-wide constants
 ├── models/
-│   ├── llm.py             ← Gemini 2.0 Flash initialisation
+│   ├── __init__.py
+│   ├── llm.py             ← Groq LLM initialisation (llama-3.3-70b-versatile)
 │   └── embeddings.py      ← BAAI/bge-small-en-v1.5 embedding model
 ├── utils/
+│   ├── __init__.py
 │   ├── document_loader.py ← PDF parsing and text chunking (pymupdf4llm)
 │   ├── vector_store.py    ← ChromaDB storage and similarity search
 │   ├── web_search.py      ← Tavily live web search wrapper
-│   ├── rag_chain.py       ← Query routing, prompt building, LLM orchestration
-│   └── voice.py           ← Speech-to-text and text-to-speech
+│   ├── rag_chain.py       ← Multi-source routing, prompt building, LLM orchestration
+│   ├── voice.py           ← Speech-to-text (SpeechRecognition) and TTS (edge-tts)
+│   └── data_analyzer.py   ← Text-to-SQL pipeline, result explanation, chart generation
 ├── app.py                 ← Main Streamlit UI
 ├── requirements.txt       ← Python dependencies
-└── .env                   ← API keys (not commited)
+├── .env                   ← API keys (not committed)
+└── README.md
 ```
 
 ---
@@ -53,12 +82,14 @@ doc-tor-ai/
 | Component | Technology |
 |---|---|
 | Frontend | Streamlit |
-| LLM | Llama 3.3 70B (`langchain-groq` via Groq API) |
+| LLM | Llama 3.3 70B via Groq API (`langchain-groq`) |
 | Embeddings | `BAAI/bge-small-en-v1.5` via `sentence-transformers` |
 | Vector Database | ChromaDB (local persistent storage) |
-| PDF Parsing | `pymupdf4llm` (markdown-aware PDF extraction) |
+| PDF Parsing | `pymupdf4llm` (markdown-aware extraction) |
+| Structured Data | SQLite in-memory via `pandas` + Text-to-SQL |
+| Chart Generation | `matplotlib` (from SQL result DataFrames) |
 | Web Search | Tavily API |
-| Voice Input | `streamlit-mic-recorder` + `SpeechRecognition` |
+| Voice Input | `streamlit-mic-recorder` + `SpeechRecognition` + Google STT |
 | Voice Output | `edge-tts` (Microsoft Neural TTS) |
 
 ---
@@ -91,13 +122,13 @@ pip install -r requirements.txt
 Create a `.env` file in the project root:
 
 ```
-GEMINI_API_KEY=your_gemini_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
 TAVILY_API_KEY=your_tavily_api_key_here
 ```
 
-Get your keys here:
-- **Gemini**: [Google AI Studio](https://aistudio.google.com/app/apikey) — free, no credit card
-- **Tavily**: [Tavily](https://tavily.com) — free tier, 1,000 searches/month
+Get your keys:
+- **Groq**: [console.groq.com](https://console.groq.com) — free tier, 14,400 requests/day
+- **Tavily**: [tavily.com](https://tavily.com) — free tier, 1,000 searches/month
 
 ### 5. Run the app
 
@@ -114,11 +145,13 @@ Open [http://localhost:8501](http://localhost:8501) in your browser.
 1. Push your code to a public GitHub repository
 2. Go to [share.streamlit.io](https://share.streamlit.io) and connect your repo
 3. Set the main file as `app.py`
-4. Add your API keys under **Settings → Secrets**:
-```
-GEMINI_API_KEY = "your_key"
+4. Add secrets under **Settings → Secrets**:
+
+```toml
+GROQ_API_KEY = "your_key"
 TAVILY_API_KEY = "your_key"
 ```
+
 5. Deploy — your app will be live at a public URL
 
 **Live App:** `[Add Streamlit Cloud link here after deployment]`
@@ -127,20 +160,37 @@ TAVILY_API_KEY = "your_key"
 
 ## 💡 How It Works
 
-1. **Upload PDFs** → parsed page-by-page into text chunks with page metadata
-2. **Chunks embedded** → converted to vectors using `BAAI/bge-small-en-v1.5` and stored in ChromaDB
-3. **You ask a question** → two things happen in parallel:
-   - ChromaDB retrieves the most relevant document chunks
-   - LLM decides if a live web search is also needed
-4. **Context assembled** → document chunks + web results combined into a structured prompt
-5. **Gemini responds** → with inline citations per paragraph and a source badge
-6. **Voice** → speak your question or listen to the response
+```
+User uploads CSV + PDF
+        ↓
+User asks a question
+        ↓
+LLM routing agent decides:
+  ├── SQL query?     → Text-to-SQL on CSV → result table + chart
+  ├── Doc question?  → ChromaDB similarity search → relevant PDF chunks
+  ├── Web question?  → Tavily search → live results
+  └── Complex?       → All three combined
+        ↓
+LLM assembles answer with inline citations
+        ↓
+Response shown with source badge + TTS option
+```
 
 ---
 
 ## 📌 Notes
 
-- The `chroma_db/` folder is created automatically on first use and persists between sessions
-- Uploaded documents stay in the vector store until you click **Clear Chat & Documents**
+- `chroma_db/` is created automatically on first use and persists between sessions
+- Uploaded documents stay indexed until you click **Clear Chat & Documents**
+- Multiple CSVs are merged automatically before SQL analysis
 - Voice input requires microphone permission in your browser
-- The app works without any PDFs uploaded — it will use web search and general knowledge
+- The app works without any uploads — it will use web search and general knowledge
+
+---
+
+## 📦 Deliverables
+
+- ✅ Working Streamlit app with all mandatory + additional features
+- ✅ GitHub repository with clean structure
+- ✅ Deployed on Streamlit Cloud
+- ✅ PPT presentation deck

@@ -10,9 +10,12 @@ _client = None
 
 def _get_client():
     global _client
-    if _client is None:
-        _client = TavilyClient(api_key=TAVILY_API_KEY)
-    return _client
+    try:
+        if _client is None:
+            _client = TavilyClient(api_key=TAVILY_API_KEY)
+        return _client
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialise Tavily client: {e}")
 
 
 def web_search(query: str, max_results: int = 4) -> list[dict]:

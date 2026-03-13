@@ -2,19 +2,67 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import pandas as pd
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from models.llm import get_llm
 from utils.vector_store import search
 from utils.web_search import web_search
+from utils.data_analyzer import query_csv, _get_schema
 
 _llm = None
 
 
 def _get_llm():
     global _llm
-    if _llm is None:
-        _llm = get_llm()
-    return _llm
+    try:
+        if _llm is None:
+            _llm = get_llm()
+        return _llm
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialise LLM: {e}")
+
+
+def _route_query(query: str, has_docs: bool, has_csv: bool) -> str:
+    """
+    Route the query to the right sources using a strong LLM prompt.
+    Returns one of: "sql", "rag", "web", "sql+rag", "sql+web", "rag+web", "all", "llm"
+    """
+    try:
+        sources = []
+        if has_csv:
+            sources.append("CSV_DATA: structured tabular data (use SQL for aggregations, counts, averages, comparisons, trends, rankings, filtering rows)")
+        if has_docs:
+            sources.append("DOCUMENTS: unstructured text (use RAG for explanations, summaries, qualitative info, named entities, descriptions)")
+        sources.append("WEB_SEARCH: live internet (use for current events, latest news, real-time data, anything not in uploaded files)")
+        sources.append("LLM_ONLY: general knowledge (use only if no other source is relevant)")
+
+        sources_str = "\n".join(f"- {s}" for s in sources)
+
+        prompt = (
+            "You are a query routing expert for a multi-source AI assistant.\n\n"
+            "Available sources:\n"
+            f"{sources_str}\n\n"
+            "Routing rules:\n"
+            "- Use CSV_DATA for: numbers, statistics, aggregations (sum/avg/max/min/count), "
+            "comparisons between rows, trends over time, rankings, filtering by value\n"
+            "- Use DOCUMENTS for: explanations, summaries, qualitative descriptions, "
+            "named entities, skills, experience, goals, narrative content\n"
+            "- Use WEB_SEARCH for: anything requiring current/real-time information, "
+            "industry standards, job requirements, latest trends, or if user says 'search online'\n"
+            "- Combine sources when the question needs multiple types of information\n\n"
+            f"User question: {query}\n\n"
+            "Reply with ONLY the source combination needed, exactly as written:\n"
+            "sql / rag / web / sql+rag / sql+web / rag+web / all / llm"
+        )
+        response = _get_llm().invoke([HumanMessage(content=prompt)]).content.strip().lower()
+
+        valid = {"sql", "rag", "web", "sql+rag", "sql+web", "rag+web", "all", "llm"}
+        for v in valid:
+            if v in response:
+                return v
+        return "rag" if has_docs else ("sql" if has_csv else "web")
+    except Exception:
+        return "rag" if has_docs else "web"
 
 
 def _refine_search_query(query: str, history: list[dict]) -> str:
@@ -32,69 +80,105 @@ def _refine_search_query(query: str, history: list[dict]) -> str:
 
 
 def _format_doc_context(chunks: list[dict]) -> str:
-    return "\n\n".join(
-        f"[📄 Page {c['page']} of {c['source']}]\n{c['text']}" for c in chunks
-    )
+    try:
+        return "\n\n".join(
+            f"[📄 Page {c['page']} of {c['source']}]\n{c['text']}" for c in chunks
+        )
+    except Exception:
+        return ""
 
 
 def _format_web_context(results: list[dict]) -> str:
-    return "\n\n".join(
-        f"[🌐 {r['title']} — {r['url']}]\n{r['content']}" for r in results
-    )
-
-
-def _build_system_prompt(mode: str, doc_context: str, web_context: str) -> str:
-    length_instruction = (
-        "Give a short, concise answer in 2-3 sentences." if mode == "concise"
-        else "Give a thorough, detailed answer with full explanations."
-    )
-    context_block = ""
-    if doc_context:
-        context_block += f"DOCUMENT CONTEXT:\n{doc_context}\n\n"
-    if web_context:
-        context_block += f"WEB SEARCH CONTEXT:\n{web_context}\n\n"
-
-    return f"""You are Doc-tor AI, an intelligent research assistant.
-{length_instruction}
-
-After each paragraph, add a citation in brackets showing exactly where that information came from.
-For document content use: [📄 Page N of filename]
-For web content use: [🌐 Source Title — URL]
-Only cite sources that were actually used. If context is insufficient, say so clearly.
-Preserve exact spellings of names, places, and technical terms as they appear in the source.
-
-{context_block}Answer based only on the context provided above."""
-
-
-def ask(query: str, history: list[dict], mode: str, has_docs: bool) -> dict:
     try:
-        # Single parallel: only ChromaDB search (no separate routing LLM call)
-        doc_chunks = search(query) if has_docs else []
+        return "\n\n".join(
+            f"[🌐 {r['title']} — {r['url']}]\n{r['content']}" for r in results
+        )
+    except Exception:
+        return ""
 
-        # Simple keyword-based routing to save API calls
-        web_triggers = ["latest", "recent", "news", "today", "current",
-                        "2024", "2025", "2026", "price", "stock", "search",
-                        "online", "internet", "web"]
-        needs_web = any(w in query.lower() for w in web_triggers)
 
-        if needs_web:
+def _build_system_prompt(mode: str, doc_context: str, web_context: str, csv_schema: str) -> str:
+    try:
+        length_instruction = (
+            "Give a short, concise answer in 2-3 sentences." if mode == "concise"
+            else "Give a thorough, detailed answer with full explanations."
+        )
+        context_block = ""
+        if csv_schema:
+            context_block += f"CSV DATA SCHEMA:\n{csv_schema}\n\n"
+        if doc_context:
+            context_block += f"DOCUMENT CONTEXT:\n{doc_context}\n\n"
+        if web_context:
+            context_block += f"WEB SEARCH CONTEXT:\n{web_context}\n\n"
+        return (
+            f"You are Doc-tor AI, an intelligent research and data assistant.\n"
+            f"{length_instruction}\n\n"
+            "After each paragraph, cite the source:\n"
+            "- Document content: [📄 Page N of filename]\n"
+            "- Web content: [🌐 Source Title — URL]\n"
+            "- CSV/data content: [📊 Data Analysis]\n"
+            "Only cite sources actually used. If context is insufficient, say so clearly.\n\n"
+            f"{context_block}Answer based only on the context provided above."
+        )
+    except Exception:
+        return "You are Doc-tor AI. Answer the user's question helpfully."
+
+
+def ask(query: str, history: list[dict], mode: str, has_docs: bool,
+        csv_df: pd.DataFrame = None) -> dict:
+    """
+    Main entry point. Routes query across CSV (SQL), PDF (RAG), and web sources.
+    Returns: {"answer", "source", "doc_chunks", "web_results", "sql_result"}
+    """
+    try:
+        has_csv = csv_df is not None and not csv_df.empty
+        route = _route_query(query, has_docs, has_csv)
+
+        doc_chunks, web_results, sql_result, csv_schema = [], [], None, ""
+
+        # SQL path
+        if "sql" in route and has_csv:
+            sql_result = query_csv(query, csv_df, mode)
+            csv_schema = _get_schema(csv_df)
+
+        # RAG path
+        if "rag" in route and has_docs:
+            doc_chunks = search(query)
+
+        # Web path
+        if "web" in route:
             search_query = _refine_search_query(query, history)
             web_results = web_search(search_query)
-        else:
-            web_results = []
 
-        if doc_chunks and web_results:
-            source = "both"
-        elif web_results:
-            source = "web"
-        elif doc_chunks:
-            source = "docs"
-        else:
-            source = "llm"
+        # LLM only fallback
+        if route == "llm" or (not doc_chunks and not web_results and not sql_result):
+            route = "llm"
 
+        # Determine source badge
+        active = []
+        if sql_result and sql_result.get("answer"):
+            active.append("sql")
+        if doc_chunks:
+            active.append("docs")
+        if web_results:
+            active.append("web")
+        source = "+".join(active) if active else "llm"
+
+        # If SQL handled it fully, return directly
+        if route == "sql" and sql_result:
+            return {
+                "answer": sql_result["answer"],
+                "source": "sql",
+                "doc_chunks": [],
+                "web_results": [],
+                "sql_result": sql_result,
+            }
+
+        # Build combined prompt for mixed sources
         doc_context = _format_doc_context(doc_chunks)
         web_context = _format_web_context(web_results)
-        system_prompt = _build_system_prompt(mode, doc_context, web_context)
+        sql_context = _get_schema(csv_df) if has_csv and "sql" in route else ""
+        system_prompt = _build_system_prompt(mode, doc_context, web_context, sql_context)
 
         messages = [SystemMessage(content=system_prompt)]
         for msg in history:
@@ -111,6 +195,7 @@ def ask(query: str, history: list[dict], mode: str, has_docs: bool) -> dict:
             "source": source,
             "doc_chunks": doc_chunks,
             "web_results": web_results,
+            "sql_result": sql_result,
         }
 
     except Exception as e:
@@ -119,4 +204,5 @@ def ask(query: str, history: list[dict], mode: str, has_docs: bool) -> dict:
             "source": "error",
             "doc_chunks": [],
             "web_results": [],
+            "sql_result": None,
         }
