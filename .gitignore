@@ -1,0 +1,20 @@
+# environment and secrets
+.env
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# vector store data
+chroma_db/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
