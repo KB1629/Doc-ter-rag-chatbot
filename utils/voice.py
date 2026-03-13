@@ -1,0 +1,36 @@
+import asyncio
+import io
+import edge_tts
+import speech_recognition as sr
+
+
+async def _synthesize(text: str, voice: str) -> bytes:
+    """Generate audio bytes from text using edge-tts."""
+    communicate = edge_tts.Communicate(text, voice)
+    audio_buffer = io.BytesIO()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_buffer.write(chunk["data"])
+    return audio_buffer.getvalue()
+
+
+def text_to_speech(text: str, voice: str = "en-US-JennyNeural") -> bytes:
+    """Convert text to audio bytes. Returns bytes to be played via st.audio()."""
+    try:
+        return asyncio.run(_synthesize(text, voice))
+    except Exception as e:
+        raise RuntimeError(f"TTS failed: {e}")
+
+
+def speech_to_text(audio_bytes: bytes) -> str:
+    """Convert recorded audio bytes to text using SpeechRecognition."""
+    try:
+        recognizer = sr.Recognizer()
+        audio_file = io.BytesIO(audio_bytes)
+        with sr.AudioFile(audio_file) as source:
+            audio = recognizer.record(source)
+        return recognizer.recognize_google(audio)
+    except sr.UnknownValueError:
+        return ""
+    except Exception as e:
+        raise RuntimeError(f"Speech recognition failed: {e}")
