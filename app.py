@@ -1,182 +1,204 @@
-import streamlit as st
-import os
 import sys
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from models.llm import get_chatgroq_model
+import os
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
+import streamlit as st
+from streamlit_mic_recorder import mic_recorder
+
+from utils.document_loader import parse_pdf
+from utils.vector_store import add_chunks, clear_collection, get_stored_sources
+from utils.rag_chain import ask
+from utils.voice import text_to_speech, speech_to_text
+from models.llm import get_llm
+from langchain_core.messages import HumanMessage
+
+st.set_page_config(page_title="Doc-tor AI", page_icon="🩺", layout="wide")
+
+st.markdown("""
+<style>
+    .main { background-color: #0f1117; }
+    .stChatMessage { border-radius: 12px; margin-bottom: 8px; }
+    .source-badge {
+        display: inline-block; padding: 2px 10px; border-radius: 12px;
+        font-size: 12px; font-weight: 600; margin-bottom: 6px;
+    }
+    .badge-docs { background: #1a3a2a; color: #4ade80; }
+    .badge-web  { background: #1a2a3a; color: #60a5fa; }
+    .badge-both { background: #2a1a3a; color: #c084fc; }
+    .badge-llm  { background: #2a2a1a; color: #facc15; }
+</style>
+""", unsafe_allow_html=True)
 
 
-def get_chat_response(chat_model, messages, system_prompt):
-    """Get response from the chat model"""
+BADGE = {
+    "docs": '<span class="source-badge badge-docs">📄 From Documents</span>',
+    "web":  '<span class="source-badge badge-web">🌐 From Web Search</span>',
+    "both": '<span class="source-badge badge-both">📄🌐 Documents + Web</span>',
+    "llm":  '<span class="source-badge badge-llm">🤖 General Knowledge</span>',
+    "error":'<span class="source-badge badge-llm">⚠️ Error</span>',
+}
+
+
+def generate_doc_summary(text: str) -> str:
+    """Generate a 3-line summary of a document using the LLM."""
     try:
-        # Prepare messages for the model
-        formatted_messages = [SystemMessage(content=system_prompt)]
-        
-        # Add conversation history
-        for msg in messages:
-            if msg["role"] == "user":
-                formatted_messages.append(HumanMessage(content=msg["content"]))
-            else:
-                formatted_messages.append(AIMessage(content=msg["content"]))
-        
-        # Get response from model
-        response = chat_model.invoke(formatted_messages)
-        return response.content
-    
-    except Exception as e:
-        return f"Error getting response: {str(e)}"
+        llm = get_llm()
+        prompt = f"Summarise the following document in exactly 3 concise sentences:\n\n{text[:3000]}"
+        return llm.invoke([HumanMessage(content=prompt)]).content
+    except Exception:
+        return "Summary unavailable."
 
-def instructions_page():
-    """Instructions and setup page"""
-    st.title("The Chatbot Blueprint")
-    st.markdown("Welcome! Follow these instructions to set up and use the chatbot.")
-    
-    st.markdown("""
-    ## 🔧 Installation
-                
-    
-    First, install the required dependencies: (Add Additional Libraries base don your needs)
-    
-    ```bash
-    pip install -r requirements.txt
-    ```
-    
-    ## API Key Setup
-    
-    You'll need API keys from your chosen provider. Get them from:
-    
-    ### OpenAI
-    - Visit [OpenAI Platform](https://platform.openai.com/api-keys)
-    - Create a new API key
-    - Set the variables in config
-    
-    ### Groq
-    - Visit [Groq Console](https://console.groq.com/keys)
-    - Create a new API key
-    - Set the variables in config
-    
-    ### Google Gemini
-    - Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
-    - Create a new API key
-    - Set the variables in config
-    
-    ## 📝 Available Models
-    
-    ### OpenAI Models
-    Check [OpenAI Models Documentation](https://platform.openai.com/docs/models) for the latest available models.
-    Popular models include:
-    - `gpt-4o` - Latest GPT-4 Omni model
-    - `gpt-4o-mini` - Faster, cost-effective version
-    - `gpt-3.5-turbo` - Fast and affordable
-    
-    ### Groq Models
-    Check [Groq Models Documentation](https://console.groq.com/docs/models) for available models.
-    Popular models include:
-    - `llama-3.1-70b-versatile` - Large, powerful model
-    - `llama-3.1-8b-instant` - Fast, smaller model
-    - `mixtral-8x7b-32768` - Good balance of speed and capability
-    
-    ### Google Gemini Models
-    Check [Gemini Models Documentation](https://ai.google.dev/gemini-api/docs/models/gemini) for available models.
-    Popular models include:
-    - `gemini-1.5-pro` - Most capable model
-    - `gemini-1.5-flash` - Fast and efficient
-    - `gemini-pro` - Standard model
-    
-    ## How to Use
-    
-    1. **Go to the Chat page** (use the navigation in the sidebar)
-    2. **Start chatting** once everything is configured!
-    
-    ## Tips
-    
-    - **System Prompts**: Customize the AI's personality and behavior
-    - **Model Selection**: Different models have different capabilities and costs
-    - **API Keys**: Can be entered in the app or set as environment variables
-    - **Chat History**: Persists during your session but resets when you refresh
-    
-    ## Troubleshooting
-    
-    - **API Key Issues**: Make sure your API key is valid and has sufficient credits
-    - **Model Not Found**: Check the provider's documentation for correct model names
-    - **Connection Errors**: Verify your internet connection and API service status
-    
-    ---
-    
-    Ready to start chatting? Navigate to the **Chat** page using the sidebar! 
-    """)
 
-def chat_page():
-    """Main chat interface page"""
-    st.title("🤖 AI ChatBot")
-    
-    # Get configuration from environment variables or session state
-    # Default system prompt
-    system_prompt = ""
-    
-    
-    # Determine which provider to use based on available API keys
-    chat_model = get_chatgroq_model()
-    
-    # Initialize chat history
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    
-    # Display chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-    
-    # Chat input
-    # if chat_model:
-    if prompt := st.chat_input("Type your message here..."):
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        # Display user message
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        # Generate and display bot response
-        with st.chat_message("assistant"):
-            with st.spinner("Getting response..."):
-                response = get_chat_response(chat_model, st.session_state.messages, system_prompt)
-                st.markdown(response)
-        
-        # Add bot response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": response})
-    else:
-        st.info("🔧 No API keys found in environment variables. Please check the Instructions page to set up your API keys.")
+def handle_upload(uploaded_files):
+    """Parse, chunk, embed and store uploaded PDFs. Show summary in sidebar."""
+    for f in uploaded_files:
+        if f.name not in st.session_state.processed_files:
+            with st.spinner(f"Processing {f.name}..."):
+                try:
+                    chunks = parse_pdf(f)
+                    add_chunks(chunks)
+                    full_text = " ".join(c["text"] for c in chunks)
+                    summary = generate_doc_summary(full_text)
+                    st.session_state.doc_summaries[f.name] = summary
+                    st.session_state.processed_files.add(f.name)
+                except Exception as e:
+                    st.error(f"Failed to process {f.name}: {e}")
+
+
+def render_sidebar():
+    with st.sidebar:
+        st.title("🩺 Doc-tor AI")
+        st.caption("Upload PDFs and ask anything.")
+
+        uploaded_files = st.file_uploader(
+            "Upload PDF(s)", type="pdf", accept_multiple_files=True, key="uploader"
+        )
+        if uploaded_files:
+            handle_upload(uploaded_files)
+
+        stored = get_stored_sources()
+        if stored:
+            st.markdown("**Loaded Documents:**")
+            for src in stored:
+                st.markdown(f"- 📄 `{src}`")
+                if src in st.session_state.doc_summaries:
+                    with st.expander(f"Summary: {src}"):
+                        st.write(st.session_state.doc_summaries[src])
+
+        st.divider()
+        mode = st.radio("Response Mode", ["Concise", "Detailed"], index=1)
+
+        st.divider()
+        if st.button("🗑️ Clear Chat & Documents", use_container_width=True):
+            st.session_state.messages = []
+            st.session_state.processed_files = set()
+            st.session_state.doc_summaries = {}
+            clear_collection()
+            st.rerun()
+
+        if st.session_state.get("messages"):
+            st.divider()
+            chat_text = "\n\n".join(
+                f"**{m['role'].capitalize()}:** {m['content']}"
+                for m in st.session_state.messages
+            )
+            st.download_button(
+                "⬇️ Download Conversation",
+                data=chat_text,
+                file_name="doctor_ai_chat.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+
+    return mode.lower()
+
+
+def render_message(msg: dict):
+    with st.chat_message(msg["role"]):
+        if msg["role"] == "assistant":
+            source = msg.get("source", "llm")
+            st.markdown(BADGE.get(source, ""), unsafe_allow_html=True)
+        st.markdown(msg["content"])
+        if msg["role"] == "assistant":
+            if st.button("🔊", key=f"tts_{msg['id']}"):
+                with st.spinner("Generating audio..."):
+                    try:
+                        audio = text_to_speech(msg["content"])
+                        st.audio(audio, format="audio/mp3")
+                    except Exception as e:
+                        st.error(f"TTS error: {e}")
+
 
 def main():
-    st.set_page_config(
-        page_title="LangChain Multi-Provider ChatBot",
-        page_icon="🤖",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
-    # Navigation
-    with st.sidebar:
-        st.title("Navigation")
-        page = st.radio(
-            "Go to:",
-            ["Chat", "Instructions"],
-            index=0
-        )
-        
-        # Add clear chat button in sidebar for chat page
-        if page == "Chat":
-            st.divider()
-            if st.button("🗑️ Clear Chat History", use_container_width=True):
-                st.session_state.messages = []
-                st.rerun()
-    
-    # Route to appropriate page
-    if page == "Instructions":
-        instructions_page()
-    if page == "Chat":
-        chat_page()
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "processed_files" not in st.session_state:
+        st.session_state.processed_files = set()
+    if "doc_summaries" not in st.session_state:
+        st.session_state.doc_summaries = {}
+    if "msg_counter" not in st.session_state:
+        st.session_state.msg_counter = 0
+
+    mode = render_sidebar()
+    has_docs = bool(get_stored_sources())
+
+    st.title("🩺 Doc-tor AI")
+    st.caption("Ask questions about your documents or anything else — I'll find the answer.")
+
+    for msg in st.session_state.messages:
+        render_message(msg)
+
+    # Voice input
+    audio = mic_recorder(start_prompt="🎙️ Record", stop_prompt="⏹️ Stop", key="mic")
+    voice_query = ""
+    if audio and audio.get("bytes"):
+        with st.spinner("Transcribing..."):
+            try:
+                voice_query = speech_to_text(audio["bytes"])
+                if voice_query:
+                    st.info(f"🎙️ Heard: *{voice_query}*")
+            except Exception as e:
+                st.error(f"Transcription error: {e}")
+
+    user_input = st.chat_input("Ask anything...") or voice_query
+
+    if user_input:
+        st.session_state.msg_counter += 1
+        user_msg = {"role": "user", "content": user_input, "id": st.session_state.msg_counter}
+        st.session_state.messages.append(user_msg)
+
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                result = ask(
+                    query=user_input,
+                    history=st.session_state.messages[:-1],
+                    mode=mode,
+                    has_docs=has_docs,
+                )
+            source = result["source"]
+            st.markdown(BADGE.get(source, ""), unsafe_allow_html=True)
+            st.markdown(result["answer"])
+
+            st.session_state.msg_counter += 1
+            ai_msg = {
+                "role": "assistant",
+                "content": result["answer"],
+                "source": source,
+                "id": st.session_state.msg_counter,
+            }
+            st.session_state.messages.append(ai_msg)
+
+            if st.button("🔊", key=f"tts_{ai_msg['id']}"):
+                with st.spinner("Generating audio..."):
+                    try:
+                        audio_out = text_to_speech(result["answer"])
+                        st.audio(audio_out, format="audio/mp3")
+                    except Exception as e:
+                        st.error(f"TTS error: {e}")
+
 
 if __name__ == "__main__":
     main()
