@@ -107,8 +107,16 @@ def query_csv(query: str, df: pd.DataFrame, mode: str) -> dict:
         sql = _generate_sql(query, schema)
 
         conn = _load_into_sqlite(df, table_name)
-        result_df = pd.read_sql_query(sql, conn)
+        # Split multi-statement SQL (LLM sometimes generates two SELECTs)
+        statements = [s.strip() for s in sql.split(";") if s.strip()]
+        frames = []
+        for stmt in statements:
+            try:
+                frames.append(pd.read_sql_query(stmt, conn))
+            except Exception:
+                pass
         conn.close()
+        result_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
         answer = _explain_result(query, sql, result_df, mode)
         numeric_cols = result_df.select_dtypes(include="number").columns
