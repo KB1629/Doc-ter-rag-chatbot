@@ -62,6 +62,13 @@ st.markdown("""
     .step { background: #1a1f2e; border-radius: 8px; padding: 10px 14px; flex: 1;
             font-size: 12px; color: #94a3b8; border: 1px solid #2a3a5a; }
     .step strong { color: #60a5fa; display: block; margin-bottom: 4px; }
+    /* hide mic recorder idle white bar */
+    iframe[title="streamlit_mic_recorder.streamlit_mic_recorder"] {
+        min-height: 0 !important;
+    }
+    div[data-testid="stIFrame"] > iframe {
+        background: transparent !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -96,9 +103,12 @@ def handle_upload(uploaded_files):
                 if f.name.endswith(".csv"):
                     df = load_csv(f)
                     st.session_state.csv_dataframes[f.name] = df
-                    # Save raw bytes so CSV survives page refresh
                     f.seek(0)
-                    st.session_state.csv_bytes[f.name] = f.read()
+                    raw = f.read()
+                    st.session_state.csv_bytes[f.name] = raw
+                    import os
+                    os.makedirs("chroma_db", exist_ok=True)
+                    open(f"chroma_db/csv_{f.name}", "wb").write(raw)
                     st.session_state.processed_files.add(f.name)
                 else:
                     chunks = parse_pdf(f)
@@ -162,7 +172,9 @@ def render_sidebar():
                     st.session_state.csv_dataframes = {}
                     st.session_state.csv_bytes = {}
                     clear_collection()
-                    import json, os
+                    import os, glob
+                    for f in glob.glob("chroma_db/csv_*"):
+                        os.remove(f)
                     if os.path.exists("chroma_db/doc_summaries.json"):
                         os.remove("chroma_db/doc_summaries.json")
                     st.rerun()
@@ -233,11 +245,14 @@ def main():
         if key not in st.session_state:
             st.session_state[key] = default
 
-    # Restore CSVs from saved bytes after page refresh
-    for name, raw in st.session_state.csv_bytes.items():
+    # Restore CSVs from disk after page refresh
+    import io, os, glob
+    for fpath in glob.glob("chroma_db/csv_*.csv") + glob.glob("chroma_db/csv_*.CSV"):
+        name = os.path.basename(fpath)[4:]  # strip "csv_" prefix
         if name not in st.session_state.csv_dataframes:
             try:
-                import io
+                raw = open(fpath, "rb").read()
+                st.session_state.csv_bytes[name] = raw
                 st.session_state.csv_dataframes[name] = load_csv(io.BytesIO(raw))
             except Exception:
                 pass
