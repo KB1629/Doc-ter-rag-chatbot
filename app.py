@@ -96,6 +96,9 @@ def handle_upload(uploaded_files):
                 if f.name.endswith(".csv"):
                     df = load_csv(f)
                     st.session_state.csv_dataframes[f.name] = df
+                    # Save raw bytes so CSV survives page refresh
+                    f.seek(0)
+                    st.session_state.csv_bytes[f.name] = f.read()
                     st.session_state.processed_files.add(f.name)
                 else:
                     chunks = parse_pdf(f)
@@ -136,8 +139,6 @@ def render_sidebar():
                 st.markdown("**📊 Loaded CSV Files:**")
                 for name, df in st.session_state.csv_dataframes.items():
                     st.markdown(f"- `{name}` ({len(df)} rows × {len(df.columns)} cols)")
-                    with st.expander(f"Preview: {name}"):
-                        st.dataframe(df.head(5), use_container_width=True)
 
             st.divider()
             st.markdown("**🎙️ Voice Input**")
@@ -151,6 +152,7 @@ def render_sidebar():
                 st.session_state.processed_files = set()
                 st.session_state.doc_summaries = {}
                 st.session_state.csv_dataframes = {}
+                st.session_state.csv_bytes = {}
                 clear_collection()
                 st.rerun()
 
@@ -214,12 +216,22 @@ def main():
         ("processed_files", set()),
         ("doc_summaries", {}),
         ("csv_dataframes", {}),
+        ("csv_bytes", {}),
         ("msg_counter", 0),
         ("last_audio_id", None),
         ("heard_text", ""),
     ]:
         if key not in st.session_state:
             st.session_state[key] = default
+
+    # Restore CSVs from saved bytes after page refresh
+    for name, raw in st.session_state.csv_bytes.items():
+        if name not in st.session_state.csv_dataframes:
+            try:
+                import io
+                st.session_state.csv_dataframes[name] = load_csv(io.BytesIO(raw))
+            except Exception:
+                pass
 
     mode, audio = render_sidebar()
     has_docs = bool(get_stored_sources())

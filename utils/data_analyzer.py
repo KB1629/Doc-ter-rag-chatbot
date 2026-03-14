@@ -26,11 +26,11 @@ def _get_llm():
 
 
 def load_csv(uploaded_file) -> pd.DataFrame:
-    """Load a Streamlit uploaded CSV into a pandas DataFrame."""
+    """Load a CSV from a Streamlit uploaded file or BytesIO object."""
     try:
         return pd.read_csv(uploaded_file)
     except Exception as e:
-        raise RuntimeError(f"Failed to load CSV '{uploaded_file.name}': {e}")
+        raise RuntimeError(f"Failed to load CSV: {e}")
 
 
 def _get_schema(df: pd.DataFrame, table_name: str = "data") -> str:
