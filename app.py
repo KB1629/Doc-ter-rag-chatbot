@@ -31,6 +31,13 @@ st.markdown("""
     .badge-sql   { background: #1a2a3a; color: #f97316; }
     .block-container { padding-bottom: 100px; }
     .stAudio { display: none; }
+    /* hide mic recorder iframe white bar, keep button visible */
+    .streamlit-mic-recorder { background: transparent !important; border: none !important; }
+    iframe[title="streamlit_mic_recorder"] { 
+        background: transparent !important; 
+        min-height: 0 !important;
+        height: 60px !important;
+    }
     .intro-box {
         background: linear-gradient(135deg, #1a1f2e, #0f1117);
         border: 1px solid #2a3a5a; border-radius: 16px;
@@ -134,7 +141,7 @@ def render_sidebar():
 
             st.divider()
             st.markdown("**🎙️ Voice Input**")
-            audio = mic_recorder(start_prompt="🎙️ Speak", stop_prompt="⏹️ Stop", key="mic")
+            audio = mic_recorder(start_prompt="🎙️ Speak", stop_prompt="⏹️ Stop", use_container_width=True, key="mic")
             st.divider()
             mode = st.radio("Response Mode", ["Concise", "Detailed"], index=1)
 
