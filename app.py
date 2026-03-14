@@ -107,6 +107,10 @@ def handle_upload(uploaded_files):
                     summary = generate_doc_summary(full_text)
                     st.session_state.doc_summaries[f.name] = summary
                     st.session_state.processed_files.add(f.name)
+                    # Persist summaries to disk so they survive refresh
+                    import json, os
+                    os.makedirs("chroma_db", exist_ok=True)
+                    json.dump(st.session_state.doc_summaries, open("chroma_db/doc_summaries.json","w"))
             except Exception as e:
                 st.error(f"Failed to process {f.name}: {e}")
 
@@ -158,6 +162,9 @@ def render_sidebar():
                     st.session_state.csv_dataframes = {}
                     st.session_state.csv_bytes = {}
                     clear_collection()
+                    import json, os
+                    if os.path.exists("chroma_db/doc_summaries.json"):
+                        os.remove("chroma_db/doc_summaries.json")
                     st.rerun()
             with col2:
                 chat_text = "\n\n".join(
@@ -234,6 +241,15 @@ def main():
                 st.session_state.csv_dataframes[name] = load_csv(io.BytesIO(raw))
             except Exception:
                 pass
+
+    # Restore doc summaries from disk after page refresh
+    import json
+    _summary_path = "chroma_db/doc_summaries.json"
+    if not st.session_state.doc_summaries and os.path.exists(_summary_path):
+        try:
+            st.session_state.doc_summaries = json.load(open(_summary_path))
+        except Exception:
+            pass
 
     mode, audio = render_sidebar()
     has_docs = bool(get_stored_sources())
