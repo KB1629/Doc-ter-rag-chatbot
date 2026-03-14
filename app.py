@@ -139,6 +139,8 @@ def render_sidebar():
                 st.markdown("**📊 Loaded CSV Files:**")
                 for name, df in st.session_state.csv_dataframes.items():
                     st.markdown(f"- `{name}` ({len(df)} rows × {len(df.columns)} cols)")
+                    with st.expander(f"Preview: {name}", expanded=False):
+                        st.dataframe(df, use_container_width=True, height=200)
 
             st.divider()
             st.markdown("**🎙️ Voice Input**")
