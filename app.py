@@ -381,14 +381,7 @@ def main():
                 "sql_result": result.get("sql_result"),
             }
             st.session_state.messages.append(ai_msg)
-
-            if st.button("🔊 Listen", key=f"tts_{ai_msg['id']}"):
-                with st.spinner("Playing..."):
-                    try:
-                        audio_out = text_to_speech(result["answer"])
-                        st.audio(audio_out, format="audio/mp3", autoplay=True)
-                    except Exception as e:
-                        st.error(f"TTS error: {e}")
+            st.rerun()
 
 
 if __name__ == "__main__":
