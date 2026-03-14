@@ -7,7 +7,8 @@ def _get(key: str) -> str:
     """Read from st.secrets (Streamlit Cloud) or os.getenv (local)."""
     try:
         import streamlit as st
-        return st.secrets.get(key) or os.getenv(key, "")
+        val = st.secrets.get(key, "")
+        return val if val else os.getenv(key, "")
     except Exception:
         return os.getenv(key, "")
 

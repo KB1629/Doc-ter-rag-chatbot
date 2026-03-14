@@ -26,19 +26,28 @@ def text_to_speech(text: str, voice: str = "en-US-JennyNeural") -> bytes:
 
 
 def speech_to_text(audio_bytes: bytes) -> str:
-    """Convert recorded audio bytes (webm) to text using SpeechRecognition."""
+    """Convert recorded audio bytes to text using SpeechRecognition.
+    Tries pydub (needs ffmpeg) first; falls back to raw WAV if unavailable.
+    """
     try:
-        from pydub import AudioSegment
-        webm_buffer = io.BytesIO(audio_bytes)
-        audio_segment = AudioSegment.from_file(webm_buffer, format="webm")
-        wav_buffer = io.BytesIO()
-        audio_segment.export(wav_buffer, format="wav")
-        wav_buffer.seek(0)
-
         recognizer = sr.Recognizer()
+
+        # Try pydub conversion (works locally with ffmpeg)
+        try:
+            from pydub import AudioSegment
+            webm_buffer = io.BytesIO(audio_bytes)
+            audio_segment = AudioSegment.from_file(webm_buffer, format="webm")
+            wav_buffer = io.BytesIO()
+            audio_segment.export(wav_buffer, format="wav")
+            wav_buffer.seek(0)
+        except Exception:
+            # ffmpeg not available (Streamlit Cloud) — treat bytes as raw WAV
+            wav_buffer = io.BytesIO(audio_bytes)
+
         with sr.AudioFile(wav_buffer) as source:
             audio = recognizer.record(source)
         return recognizer.recognize_google(audio)
+
     except sr.UnknownValueError:
         return ""
     except Exception as e:
