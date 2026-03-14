@@ -111,7 +111,7 @@ def _build_system_prompt(mode: str, doc_context: str, web_context: str, csv_sche
         if web_context:
             context_block += f"WEB SEARCH CONTEXT:\n{web_context}\n\n"
         return (
-            f"You are Doc-tor AI, an intelligent research and data assistant.\n"
+            f"You are Analyser Bot, an intelligent student career assistant.\n"
             f"{length_instruction}\n\n"
             "After each paragraph, cite the source:\n"
             "- Document content: [📄 Page N of filename]\n"
@@ -121,7 +121,7 @@ def _build_system_prompt(mode: str, doc_context: str, web_context: str, csv_sche
             f"{context_block}Answer based only on the context provided above."
         )
     except Exception:
-        return "You are Doc-tor AI. Answer the user's question helpfully."
+        return "You are Analyser Bot. Answer the user's question helpfully."
 
 
 def ask(query: str, history: list[dict], mode: str, has_docs: bool,
