@@ -147,24 +147,24 @@ def render_sidebar():
             mode = st.radio("Response Mode", ["Concise", "Detailed"], index=1)
 
             st.divider()
-            if st.button("🗑️ Clear Chat & Documents", use_container_width=True):
-                st.session_state.messages = []
-                st.session_state.processed_files = set()
-                st.session_state.doc_summaries = {}
-                st.session_state.csv_dataframes = {}
-                st.session_state.csv_bytes = {}
-                clear_collection()
-                st.rerun()
-
-            if st.session_state.get("messages"):
-                st.divider()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🗑️ Clear", use_container_width=True):
+                    st.session_state.messages = []
+                    st.session_state.processed_files = set()
+                    st.session_state.doc_summaries = {}
+                    st.session_state.csv_dataframes = {}
+                    st.session_state.csv_bytes = {}
+                    clear_collection()
+                    st.rerun()
+            with col2:
                 chat_text = "\n\n".join(
                     f"**{m['role'].capitalize()}:** {m['content']}"
-                    for m in st.session_state.messages
+                    for m in st.session_state.get("messages", [])
                 )
                 st.download_button(
-                    "⬇️ Download Conversation", data=chat_text,
-                    file_name="doctor_ai_chat.md", mime="text/markdown",
+                    "⬇️ Export", data=chat_text or " ",
+                    file_name="chat.md", mime="text/markdown",
                     use_container_width=True,
                 )
         return mode.lower(), audio
