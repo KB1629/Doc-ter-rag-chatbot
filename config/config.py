@@ -3,12 +3,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+def _get(key: str) -> str:
+    """Read from st.secrets (Streamlit Cloud) or os.getenv (local)."""
+    try:
+        import streamlit as st
+        return st.secrets.get(key) or os.getenv(key, "")
+    except Exception:
+        return os.getenv(key, "")
 
-GROQ_MODEL = "llama-3.3-70b-versatile"
-EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
-CHROMA_DIR = "chroma_db"
-CHUNK_SIZE = 1200
-CHUNK_OVERLAP = 150
-TOP_K_RESULTS = 6
+GROQ_API_KEY     = _get("GROQ_API_KEY")
+TAVILY_API_KEY   = _get("TAVILY_API_KEY")
+
+GROQ_MODEL       = "llama-3.3-70b-versatile"
+EMBEDDING_MODEL  = "BAAI/bge-small-en-v1.5"
+CHROMA_DIR       = "chroma_db"
+CHUNK_SIZE       = 1200
+CHUNK_OVERLAP    = 150
+TOP_K_RESULTS    = 6
