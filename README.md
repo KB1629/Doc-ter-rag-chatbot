@@ -154,7 +154,7 @@ TAVILY_API_KEY = "your_key"
 
 5. Deploy — your app will be live at a public URL
 
-**Live App:** `[Add Streamlit Cloud link here after deployment]`
+**Live App:** https://doc-ter--chatbot.streamlit.app/
 
 ---
 
