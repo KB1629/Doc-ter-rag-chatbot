@@ -13,19 +13,12 @@ def _get(key: str) -> str:
         pass
     return os.getenv(key, "")
 
-GROQ_API_KEY     = _get("GROQ_API_KEY")
-TAVILY_API_KEY   = _get("TAVILY_API_KEY")
+GROQ_API_KEY    = _get("GROQ_API_KEY")
+TAVILY_API_KEY  = _get("TAVILY_API_KEY")
 
-# Warn early if keys are missing
-import logging
-if not GROQ_API_KEY:
-    logging.warning("GROQ_API_KEY is not set")
-if not TAVILY_API_KEY:
-    logging.warning("TAVILY_API_KEY is not set")
-
-GROQ_MODEL       = "llama-3.3-70b-versatile"
-EMBEDDING_MODEL  = "BAAI/bge-small-en-v1.5"
-CHROMA_DIR       = "chroma_db"
-CHUNK_SIZE       = 1200
-CHUNK_OVERLAP    = 150
-TOP_K_RESULTS    = 6
+GROQ_MODEL      = "llama-3.3-70b-versatile"
+EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+CHROMA_DIR      = "chroma_db"
+CHUNK_SIZE      = 1200
+CHUNK_OVERLAP   = 150
+TOP_K_RESULTS   = 6
