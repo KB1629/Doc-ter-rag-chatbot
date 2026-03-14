@@ -1,0 +1,25 @@
+Subject,Semester,Marks,Max_Marks,Grade,Credits
+Mathematics-I,1,58,100,B,4
+Programming in C,1,88,100,A+,4
+Engineering Physics,1,67,100,B+,4
+Digital Logic,1,82,100,A+,4
+Communication Skills,1,74,100,A,2
+Environmental Science,1,71,100,A,2
+Mathematics-II,2,63,100,B+,4
+Object Oriented Programming,2,86,100,A+,4
+Data Structures,2,84,100,A+,4
+Computer Organization,2,76,100,A,4
+Discrete Mathematics,2,64,100,B+,4
+Engineering Drawing,2,69,100,B+,2
+Algorithms,3,88,100,A+,4
+DBMS,3,85,100,A+,4
+Operating Systems,3,79,100,A,4
+Computer Networks,3,77,100,A,4
+Software Engineering,3,73,100,A,4
+Probability & Statistics,3,62,100,B+,4
+Machine Learning,4,78,100,A,4
+Cloud Computing,4,75,100,A,4
+Compiler Design,4,60,100,B+,4
+Web Technologies,4,81,100,A+,4
+Data Warehousing,4,74,100,A,4
+Project Work,4,92,100,O,2

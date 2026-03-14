@@ -178,6 +178,26 @@ Response shown with source badge + TTS option
 
 ---
 
+## 🧪 Sample Test Files
+
+A `tests/` folder is included in this repository with ready-to-use sample files:
+
+| File | Type | Description |
+|---|---|---|
+| `arjun_sharma_resume.pdf` | PDF | Sample student resume with skills, projects, and experience |
+| `arjun_sharma_career_goal.pdf` | PDF | Career goal statement targeting Data/AI Engineer roles |
+| `btech_marks.csv` | CSV | B.Tech semester marks across 4 semesters (24 rows × 6 cols) |
+
+**How to use:**
+1. Upload all three files via the sidebar uploader on the live app
+2. PDF summaries will appear instantly in the sidebar
+3. CSV preview (scrollable) will appear in the sidebar
+4. Start asking questions — the sample data is already loaded on the deployed app for anyone to test directly
+
+> The live app at https://doc-ter--chatbot.streamlit.app already has these files pre-loaded so you can test all features immediately without uploading anything.
+
+---
+
 ## 📌 Notes
 
 - `chroma_db/` is created automatically on first use and persists between sessions
