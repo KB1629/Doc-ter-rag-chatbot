@@ -2,6 +2,26 @@
 
 > Upload your marks, resume, and goals. Ask anything. Get data-driven answers with charts, citations, and live job market insights.
 
+**Live App:** https://doc-ter--chatbot.streamlit.app
+
+---
+
+## 🚀 How to Use (Quick Start)
+
+Sample test files are included in the `tests/` folder — no need to prepare anything.
+
+1. Go to the **[live app](https://doc-ter--chatbot.streamlit.app)** — sample files are already pre-loaded
+2. Or upload your own files via the **sidebar uploader** (PDF or CSV)
+3. PDF summaries appear instantly in the sidebar
+4. CSV preview (scrollable) appears in the sidebar
+5. Start asking questions in the chat box
+
+**Try these questions to test all features:**
+- `"What is my average marks across all semesters?"` → SQL + chart
+- `"What skills are listed in my resume?"` → RAG from PDF
+- `"What does Google require for a Data Engineer?"` → Live web search
+- `"Am I ready for a Data Science internship? What should I improve?"` → All 3 combined
+
 ---
 
 ## 🎯 Problem Statement
