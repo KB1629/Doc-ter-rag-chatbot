@@ -259,6 +259,40 @@ def main():
             except Exception:
                 pass
 
+    # Auto-load sample test files on first visit (so interviewers can test immediately)
+    _preload_done_key = "_preload_done"
+    if not st.session_state.get(_preload_done_key):
+        st.session_state[_preload_done_key] = True
+        sample_dir = os.path.join(os.path.dirname(__file__), "tests")
+        preloaded = False
+        for fname in ["arjun_sharma_resume.pdf", "arjun_sharma_career_goal.pdf", "btech_marks.csv"]:
+            fpath = os.path.join(sample_dir, fname)
+            if not os.path.exists(fpath) or fname in st.session_state.processed_files:
+                continue
+            try:
+                if fname.endswith(".csv"):
+                    raw = open(fpath, "rb").read()
+                    st.session_state.csv_bytes[fname] = raw
+                    st.session_state.csv_dataframes[fname] = load_csv(io.BytesIO(raw))
+                    os.makedirs("chroma_db", exist_ok=True)
+                    open(f"chroma_db/csv_{fname}", "wb").write(raw)
+                else:
+                    with open(fpath, "rb") as f:
+                        chunks = parse_pdf(f)
+                    add_chunks(chunks)
+                    full_text = " ".join(c["text"] for c in chunks)
+                    summary = generate_doc_summary(full_text)
+                    st.session_state.doc_summaries[fname] = summary
+                    import json
+                    os.makedirs("chroma_db", exist_ok=True)
+                    json.dump(st.session_state.doc_summaries, open("chroma_db/doc_summaries.json", "w"))
+                st.session_state.processed_files.add(fname)
+                preloaded = True
+            except Exception:
+                pass
+        if preloaded:
+            st.rerun()
+
     # Restore doc summaries from disk after page refresh
     import json
     _summary_path = "chroma_db/doc_summaries.json"
