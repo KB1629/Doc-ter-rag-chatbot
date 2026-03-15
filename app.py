@@ -133,37 +133,12 @@ def render_sidebar():
         mode = "detailed"
         with st.sidebar:
             st.title("🔬 Analyser Bot")
-            st.caption("Upload marks CSVs, resume PDFs, and ask anything.")
-
-            uploaded_files = st.file_uploader(
-                "Upload PDF(s) or CSV(s)", type=["pdf", "csv"],
-                accept_multiple_files=True, key="uploader"
-            )
-            if uploaded_files:
-                handle_upload(uploaded_files)
-
-            stored = get_stored_sources()
-            if stored:
-                st.markdown("**📄 Loaded Documents:**")
-                for src in stored:
-                    st.markdown(f"- `{src}`")
-                    if src in st.session_state.doc_summaries:
-                        with st.expander(f"Summary: {src}"):
-                            st.write(st.session_state.doc_summaries[src])
-
-            if st.session_state.get("csv_dataframes"):
-                st.markdown("**📊 Loaded CSV Files:**")
-                for name, df in st.session_state.csv_dataframes.items():
-                    st.markdown(f"- `{name}` ({len(df)} rows × {len(df.columns)} cols)")
-                    with st.expander(f"Preview: {name}", expanded=False):
-                        st.dataframe(df, use_container_width=True, height=200)
-
+            st.caption("Career intelligence assistant.")
             st.divider()
             st.markdown("**🎙️ Voice Input**")
             audio = mic_recorder(start_prompt="🎙️ Speak", stop_prompt="⏹️ Stop", use_container_width=True, key="mic")
             st.divider()
             mode = st.radio("Response Mode", ["Concise", "Detailed"], index=1)
-
             st.divider()
             col1, col2 = st.columns(2)
             with col1:
@@ -196,7 +171,173 @@ def render_sidebar():
         return "detailed", None
 
 
-def render_sql_result(sql_result: dict):
+def render_dashboard(combined_csv):
+    """Tab 1 — Dashboard: upload, loaded files, CSV table, visualisations, PDF summaries."""
+    try:
+        st.markdown("## 📊 Dashboard")
+        st.caption("Upload your files here. Summaries and data previews load automatically.")
+
+        # ── Upload ────────────────────────────────────────────────────────
+        uploaded_files = st.file_uploader(
+            "Upload PDF(s) or CSV(s)", type=["pdf", "csv"],
+            accept_multiple_files=True, key="uploader"
+        )
+        if uploaded_files:
+            handle_upload(uploaded_files)
+
+        st.divider()
+
+        # ── PDF Section ───────────────────────────────────────────────────
+        stored = get_stored_sources()
+        if stored:
+            st.markdown("### 📄 Loaded Documents")
+            for src in stored:
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.markdown(f"**`{src}`**")
+                with col2:
+                    btn_key = f"sum_btn_{src}"
+                    if st.button("📋 Generate Summary", key=btn_key, use_container_width=True):
+                        st.session_state[f"show_summary_{src}"] = True
+                if st.session_state.get(f"show_summary_{src}"):
+                    if src in st.session_state.doc_summaries:
+                        st.info(st.session_state.doc_summaries[src])
+                    else:
+                        with st.spinner("Generating summary..."):
+                            try:
+                                from utils.vector_store import search
+                                chunks = search(src, top_k=10)
+                                text = " ".join(c["text"] for c in chunks) if chunks else ""
+                                summary = generate_doc_summary(text)
+                                st.session_state.doc_summaries[src] = summary
+                                import json, os
+                                os.makedirs("chroma_db", exist_ok=True)
+                                json.dump(st.session_state.doc_summaries,
+                                          open("chroma_db/doc_summaries.json", "w"))
+                                st.info(summary)
+                            except Exception as e:
+                                st.error(f"Summary error: {e}")
+                st.markdown("---")
+
+        # ── CSV Section ───────────────────────────────────────────────────
+        if st.session_state.get("csv_dataframes"):
+            st.markdown("### 📊 Loaded CSV Data")
+            for name, df in st.session_state.csv_dataframes.items():
+                st.markdown(f"**`{name}`** — {len(df)} rows × {len(df.columns)} cols")
+
+                # Full scrollable table
+                st.dataframe(df, use_container_width=True, height=300)
+
+                # Auto visualisations
+                st.markdown("#### 📈 Visualisations")
+                numeric_cols = df.select_dtypes(include="number").columns.tolist()
+                cat_cols = df.select_dtypes(exclude="number").columns.tolist()
+
+                if numeric_cols:
+                    import matplotlib.pyplot as plt
+                    import matplotlib
+                    matplotlib.use("Agg")
+
+                    # 1. Bar chart — first categorical vs first numeric
+                    if cat_cols:
+                        try:
+                            fig, ax = plt.subplots(figsize=(10, 4))
+                            fig.patch.set_facecolor("#0f1117")
+                            ax.set_facecolor("#1a1f2e")
+                            x_col = cat_cols[0]
+                            y_col = numeric_cols[0]
+                            plot_df = df[[x_col, y_col]].dropna()
+                            bars = ax.bar(plot_df[x_col].astype(str), plot_df[y_col],
+                                          color="#38bdf8", edgecolor="#0f1117")
+                            ax.set_xlabel(x_col, color="#94a3b8")
+                            ax.set_ylabel(y_col, color="#94a3b8")
+                            ax.set_title(f"{y_col} by {x_col}", color="#e2e8f0")
+                            ax.tick_params(colors="#94a3b8", axis="both")
+                            plt.xticks(rotation=45, ha="right")
+                            for spine in ax.spines.values():
+                                spine.set_edgecolor("#2a3a5a")
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            plt.close(fig)
+                        except Exception:
+                            pass
+
+                    # 2. Line chart — numeric trend over rows or second cat col
+                    if len(numeric_cols) >= 1:
+                        try:
+                            fig, ax = plt.subplots(figsize=(10, 4))
+                            fig.patch.set_facecolor("#0f1117")
+                            ax.set_facecolor("#1a1f2e")
+                            colors = ["#38bdf8", "#4ade80", "#f97316", "#c084fc"]
+                            for i, col in enumerate(numeric_cols[:4]):
+                                ax.plot(df[col].values, marker="o", label=col,
+                                        color=colors[i % len(colors)], linewidth=2)
+                            ax.set_title("Numeric Trends", color="#e2e8f0")
+                            ax.tick_params(colors="#94a3b8")
+                            ax.legend(facecolor="#1a1f2e", labelcolor="#e2e8f0")
+                            for spine in ax.spines.values():
+                                spine.set_edgecolor("#2a3a5a")
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            plt.close(fig)
+                        except Exception:
+                            pass
+
+                    # 3. Pie chart — if a categorical col has ≤10 unique values
+                    if cat_cols and len(numeric_cols) >= 1:
+                        try:
+                            pie_cat = cat_cols[0]
+                            pie_num = numeric_cols[0]
+                            pie_df = df.groupby(pie_cat)[pie_num].sum().reset_index()
+                            if 2 <= len(pie_df) <= 10:
+                                fig, ax = plt.subplots(figsize=(6, 6))
+                                fig.patch.set_facecolor("#0f1117")
+                                ax.set_facecolor("#0f1117")
+                                pie_colors = ["#38bdf8","#4ade80","#f97316","#c084fc",
+                                              "#fb923c","#facc15","#34d399","#818cf8"]
+                                ax.pie(pie_df[pie_num], labels=pie_df[pie_cat].astype(str),
+                                       autopct="%1.1f%%", colors=pie_colors[:len(pie_df)],
+                                       textprops={"color": "#e2e8f0"})
+                                ax.set_title(f"{pie_num} distribution by {pie_cat}", color="#e2e8f0")
+                                plt.tight_layout()
+                                st.pyplot(fig)
+                                plt.close(fig)
+                        except Exception:
+                            pass
+
+                    # 4. Heatmap — if multiple numeric cols
+                    if len(numeric_cols) >= 3:
+                        try:
+                            import numpy as np
+                            corr = df[numeric_cols].corr()
+                            fig, ax = plt.subplots(figsize=(6, 5))
+                            fig.patch.set_facecolor("#0f1117")
+                            ax.set_facecolor("#1a1f2e")
+                            im = ax.imshow(corr.values, cmap="coolwarm", aspect="auto")
+                            ax.set_xticks(range(len(corr.columns)))
+                            ax.set_yticks(range(len(corr.columns)))
+                            ax.set_xticklabels(corr.columns, rotation=45, ha="right", color="#94a3b8")
+                            ax.set_yticklabels(corr.columns, color="#94a3b8")
+                            for i in range(len(corr)):
+                                for j in range(len(corr.columns)):
+                                    ax.text(j, i, f"{corr.values[i,j]:.2f}",
+                                            ha="center", va="center", color="white", fontsize=9)
+                            plt.colorbar(im, ax=ax)
+                            ax.set_title("Correlation Heatmap", color="#e2e8f0")
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            plt.close(fig)
+                        except Exception:
+                            pass
+                else:
+                    st.info("No numeric columns found for visualisation.")
+                st.markdown("---")
+
+        if not stored and not st.session_state.get("csv_dataframes"):
+            st.info("No files loaded yet. Upload PDFs or CSVs above to get started.")
+
+    except Exception as e:
+        st.error(f"Dashboard error: {e}")
     """Render SQL query, result table, and visualize button below an assistant message."""
     if not sql_result or not sql_result.get("sql"):
         return
@@ -314,9 +455,14 @@ def main():
     else:
         combined_csv = None
 
-    # ── Intro section (hidden once chat starts) ──────────────────────────
-    if not st.session_state.messages:
-        st.markdown("""
+    tab1, tab2 = st.tabs(["📊 Dashboard", "💬 Chat"])
+
+    with tab1:
+        render_dashboard(combined_csv)
+
+    with tab2:
+        if not st.session_state.messages:
+            st.markdown("""
 <div class="intro-box">
   <h2 style="margin:0 0 6px 0; color:#e2e8f0;">🔬 Analyser Bot</h2>
   <p style="margin:0 0 18px 0; color:#94a3b8; font-size:15px;">
@@ -372,67 +518,67 @@ def main():
 </div>
 """, unsafe_allow_html=True)
 
-    st.markdown("### 💬 Chat")
-    st.caption("Ask about your data, documents, or anything career-related.")
+        st.markdown("### 💬 Chat")
+        st.caption("Ask about your data, documents, or anything career-related.")
 
-    for msg in st.session_state.messages:
-        render_message(msg)
+        for msg in st.session_state.messages:
+            render_message(msg)
 
-    user_input = st.chat_input("Ask anything...")
+        user_input = st.chat_input("Ask anything...")
 
-    voice_query = ""
-    if audio and audio.get("bytes") and audio.get("id") != st.session_state.last_audio_id:
-        st.session_state.last_audio_id = audio.get("id")
-        with st.spinner("Transcribing..."):
-            try:
-                voice_query = speech_to_text(audio["bytes"])
-                if voice_query:
-                    st.session_state.heard_text = voice_query
-            except Exception as e:
-                st.error(f"Transcription error: {e}")
+        voice_query = ""
+        if audio and audio.get("bytes") and audio.get("id") != st.session_state.last_audio_id:
+            st.session_state.last_audio_id = audio.get("id")
+            with st.spinner("Transcribing..."):
+                try:
+                    voice_query = speech_to_text(audio["bytes"])
+                    if voice_query:
+                        st.session_state.heard_text = voice_query
+                except Exception as e:
+                    st.error(f"Transcription error: {e}")
 
-    if st.session_state.get("heard_text") and not voice_query:
-        st.session_state.heard_text = ""
+        if st.session_state.get("heard_text") and not voice_query:
+            st.session_state.heard_text = ""
 
-    if voice_query:
-        st.info(f"🎙️ Heard: *{voice_query}*")
+        if voice_query:
+            st.info(f"🎙️ Heard: *{voice_query}*")
 
-    user_input = user_input or voice_query
+        user_input = user_input or voice_query
 
-    if user_input:
-        st.session_state.msg_counter += 1
-        user_msg = {"role": "user", "content": user_input, "id": st.session_state.msg_counter}
-        st.session_state.messages.append(user_msg)
-
-        with st.chat_message("user"):
-            st.markdown(user_input)
-
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                result = ask(
-                    query=user_input,
-                    history=st.session_state.messages[:-1],
-                    mode=mode,
-                    has_docs=has_docs,
-                    csv_df=combined_csv,
-                )
-            source = result["source"]
-            st.markdown(BADGE.get(source, BADGE["llm"]), unsafe_allow_html=True)
-            st.markdown(result["answer"])
-
-            if result.get("sql_result"):
-                render_sql_result(result["sql_result"])
-
+        if user_input:
             st.session_state.msg_counter += 1
-            ai_msg = {
-                "role": "assistant",
-                "content": result["answer"],
-                "source": source,
-                "id": st.session_state.msg_counter,
-                "sql_result": result.get("sql_result"),
-            }
-            st.session_state.messages.append(ai_msg)
-            st.rerun()
+            user_msg = {"role": "user", "content": user_input, "id": st.session_state.msg_counter}
+            st.session_state.messages.append(user_msg)
+
+            with st.chat_message("user"):
+                st.markdown(user_input)
+
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    result = ask(
+                        query=user_input,
+                        history=st.session_state.messages[:-1],
+                        mode=mode,
+                        has_docs=has_docs,
+                        csv_df=combined_csv,
+                    )
+                source = result["source"]
+                st.markdown(BADGE.get(source, BADGE["llm"]), unsafe_allow_html=True)
+                st.markdown(result["answer"])
+
+                if result.get("sql_result"):
+                    render_sql_result(result["sql_result"])
+
+                st.session_state.msg_counter += 1
+                ai_msg = {
+                    "role": "assistant",
+                    "content": result["answer"],
+                    "source": source,
+                    "id": st.session_state.msg_counter,
+                    "sql_result": result.get("sql_result"),
+                }
+                st.session_state.messages.append(ai_msg)
+                st.rerun()
 
 
 if __name__ == "__main__":
