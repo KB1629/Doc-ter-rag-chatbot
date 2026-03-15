@@ -7,32 +7,27 @@ import tempfile
 from config.config import CHUNK_SIZE, CHUNK_OVERLAP
 
 
-def parse_pdf(uploaded_file) -> list[dict]:
-    """
-    Parse a Streamlit uploaded PDF file.
-    Returns a list of chunks: [{"text": ..., "page": N, "source": filename}, ...]
-    """
+def parse_pdf(uploaded_file, source_name: str = None) -> list[dict]:
+    """Parse a PDF file (Streamlit upload or BytesIO). Returns list of chunks."""
     try:
+        name = source_name or getattr(uploaded_file, "name", "document.pdf")
+        data = uploaded_file.read() if hasattr(uploaded_file, "read") else uploaded_file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(uploaded_file.read())
+            tmp.write(data)
             tmp_path = tmp.name
-
         pages = pymupdf4llm.to_markdown(tmp_path, page_chunks=True)
         os.unlink(tmp_path)
-
         chunks = []
         for page in pages:
             text = page["text"].strip()
             page_num = page["metadata"]["page_number"]
             if not text:
                 continue
-            for chunk in _split_text(text, uploaded_file.name, page_num):
+            for chunk in _split_text(text, name, page_num):
                 chunks.append(chunk)
-
         return chunks
-
     except Exception as e:
-        raise RuntimeError(f"Failed to parse PDF '{uploaded_file.name}': {e}")
+        raise RuntimeError(f"Failed to parse PDF: {e}")
 
 
 def _split_text(text: str, source: str, page: int) -> list[dict]:

@@ -76,7 +76,8 @@ def get_stored_sources() -> list[str]:
         if collection.count() == 0:
             return []
         results = collection.get(include=["metadatas"])
-        sources = list({m["source"] for m in results["metadatas"]})
-        return sources
+        # Normalize to basename so full paths and short names don't duplicate
+        sources = list({os.path.basename(m["source"]) for m in results["metadatas"]})
+        return sorted(sources)
     except Exception as e:
         return []

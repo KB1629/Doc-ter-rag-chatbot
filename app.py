@@ -404,14 +404,8 @@ def main():
                     os.makedirs("chroma_db", exist_ok=True)
                     open(f"chroma_db/csv_{fname}", "wb").write(raw)
                 else:
-                    import io as _io
-                    with open(fpath, "rb") as _f:
-                        class _FakeFile:
-                            def __init__(self, b, n): self._b = b; self.name = n
-                            def read(self): return self._b
-                            def seek(self, *a): pass
-                        fake = _FakeFile(open(fpath, "rb").read(), fname)
-                    chunks = parse_pdf(fake)
+                    raw = open(fpath, "rb").read()
+                    chunks = parse_pdf(io.BytesIO(raw), source_name=fname)
                     add_chunks(chunks)
                     full_text = " ".join(c["text"] for c in chunks)
                     summary = generate_doc_summary(full_text)
