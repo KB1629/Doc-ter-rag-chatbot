@@ -172,10 +172,10 @@ def render_sidebar():
 
 
 def render_dashboard(combined_csv):
-    """Tab 1 — Dashboard: upload, one-click analyse per file."""
+    """Tab 1 — Dashboard: upload, one Analyse All button, summaries + charts."""
     try:
         st.markdown("## 📊 Dashboard")
-        st.caption("Upload your files here. Click **Analyse** on any file to see summaries, data, and charts.")
+        st.caption("Upload your files here. Click **Analyse All** to see summaries, data, and charts.")
 
         uploaded_files = st.file_uploader(
             "Upload PDF(s) or CSV(s)", type=["pdf", "csv"],
@@ -192,139 +192,132 @@ def render_dashboard(combined_csv):
 
         st.divider()
 
-        # ── PDF files ─────────────────────────────────────────────────────
+        # Show loaded files compactly
         if stored:
-            st.markdown("### 📄 Documents")
-            for src in stored:
-                col1, col2 = st.columns([5, 1])
-                with col1:
-                    st.markdown(f"📄 `{src}`")
-                with col2:
-                    if st.button("🔍 Analyse", key=f"analyse_pdf_{src}", use_container_width=True):
-                        st.session_state[f"analyse_{src}"] = True
-
-                if st.session_state.get(f"analyse_{src}"):
-                    if src not in st.session_state.doc_summaries:
-                        with st.spinner(f"Generating summary for {src}..."):
-                            try:
-                                from utils.vector_store import search
-                                chunks = search(src, top_k=10)
-                                text = " ".join(c["text"] for c in chunks) if chunks else ""
-                                summary = generate_doc_summary(text)
-                                st.session_state.doc_summaries[src] = summary
-                                import json, os
-                                os.makedirs("chroma_db", exist_ok=True)
-                                json.dump(st.session_state.doc_summaries,
-                                          open("chroma_db/doc_summaries.json", "w"))
-                            except Exception as e:
-                                st.error(f"Summary error: {e}")
-                    if src in st.session_state.doc_summaries:
-                        st.info(st.session_state.doc_summaries[src])
-
-        # ── CSV files ─────────────────────────────────────────────────────
+            st.markdown("**📄 Documents:** " + "  |  ".join(f"`{s}`" for s in stored))
         if st.session_state.get("csv_dataframes"):
-            st.markdown("### 📊 CSV Data")
             for name, df in st.session_state.csv_dataframes.items():
-                col1, col2 = st.columns([5, 1])
-                with col1:
-                    st.markdown(f"📊 `{name}` — {len(df)} rows × {len(df.columns)} cols")
-                with col2:
-                    if st.button("🔍 Analyse", key=f"analyse_csv_{name}", use_container_width=True):
-                        st.session_state[f"analyse_{name}"] = True
+                st.markdown(f"**📊 CSV:** `{name}` — {len(df)} rows × {len(df.columns)} cols")
 
-                if st.session_state.get(f"analyse_{name}"):
-                    st.dataframe(df, use_container_width=True, height=300)
+        if st.button("🔍 Analyse All", type="primary", use_container_width=False):
+            st.session_state["dashboard_analysed"] = True
 
-                    numeric_cols = df.select_dtypes(include="number").columns.tolist()
-                    cat_cols = df.select_dtypes(exclude="number").columns.tolist()
+        if not st.session_state.get("dashboard_analysed"):
+            return
 
-                    if not numeric_cols:
-                        st.info("No numeric columns found for visualisation.")
-                        continue
+        st.divider()
 
-                    import matplotlib
-                    matplotlib.use("Agg")
-                    import matplotlib.pyplot as plt
-
-                    vcols = st.columns(2)
-
-                    # Bar chart
-                    if cat_cols:
+        # ── PDF Summaries ─────────────────────────────────────────────────
+        if stored:
+            st.markdown("### 📄 Document Summaries")
+            for src in stored:
+                st.markdown(f"**`{src}`**")
+                if src not in st.session_state.doc_summaries:
+                    with st.spinner(f"Summarising {src}..."):
                         try:
-                            fig, ax = plt.subplots(figsize=(7, 4))
-                            fig.patch.set_facecolor("#0f1117")
-                            ax.set_facecolor("#1a1f2e")
-                            plot_df = df[[cat_cols[0], numeric_cols[0]]].dropna()
-                            ax.bar(plot_df[cat_cols[0]].astype(str), plot_df[numeric_cols[0]], color="#38bdf8")
-                            ax.set_title(f"{numeric_cols[0]} by {cat_cols[0]}", color="#e2e8f0")
-                            ax.tick_params(colors="#94a3b8")
-                            plt.xticks(rotation=45, ha="right")
-                            for sp in ax.spines.values(): sp.set_edgecolor("#2a3a5a")
-                            plt.tight_layout()
-                            with vcols[0]: st.pyplot(fig)
-                            plt.close(fig)
-                        except Exception: pass
+                            # Use stored summary text from session or fallback
+                            summary = generate_doc_summary(
+                                st.session_state.doc_summaries.get(src, "No content available.")
+                            )
+                            st.session_state.doc_summaries[src] = summary
+                            import json, os
+                            os.makedirs("chroma_db", exist_ok=True)
+                            json.dump(st.session_state.doc_summaries,
+                                      open("chroma_db/doc_summaries.json", "w"))
+                        except Exception as e:
+                            st.error(f"Summary error: {e}")
+                if src in st.session_state.doc_summaries:
+                    st.info(st.session_state.doc_summaries[src])
 
-                    # Line chart
+        # ── CSV Data + Charts ─────────────────────────────────────────────
+        if st.session_state.get("csv_dataframes"):
+            st.markdown("### 📊 CSV Data & Visualisations")
+            for name, df in st.session_state.csv_dataframes.items():
+                st.markdown(f"**`{name}`**")
+                st.dataframe(df, use_container_width=True, height=300)
+
+                numeric_cols = df.select_dtypes(include="number").columns.tolist()
+                cat_cols = df.select_dtypes(exclude="number").columns.tolist()
+                if not numeric_cols:
+                    st.info("No numeric columns for charts.")
+                    continue
+
+                import matplotlib
+                matplotlib.use("Agg")
+                import matplotlib.pyplot as plt
+
+                c1, c2 = st.columns(2)
+
+                # Bar
+                if cat_cols:
                     try:
                         fig, ax = plt.subplots(figsize=(7, 4))
-                        fig.patch.set_facecolor("#0f1117")
-                        ax.set_facecolor("#1a1f2e")
-                        colors = ["#38bdf8", "#4ade80", "#f97316", "#c084fc"]
-                        for i, col in enumerate(numeric_cols[:4]):
-                            ax.plot(df[col].values, marker="o", label=col,
-                                    color=colors[i % 4], linewidth=2)
-                        ax.set_title("Numeric Trends", color="#e2e8f0")
-                        ax.tick_params(colors="#94a3b8")
-                        ax.legend(facecolor="#1a1f2e", labelcolor="#e2e8f0")
+                        fig.patch.set_facecolor("#0f1117"); ax.set_facecolor("#1a1f2e")
+                        plot_df = df[[cat_cols[0], numeric_cols[0]]].dropna()
+                        ax.bar(plot_df[cat_cols[0]].astype(str), plot_df[numeric_cols[0]], color="#38bdf8")
+                        ax.set_title(f"{numeric_cols[0]} by {cat_cols[0]}", color="#e2e8f0")
+                        ax.tick_params(colors="#94a3b8"); plt.xticks(rotation=45, ha="right")
                         for sp in ax.spines.values(): sp.set_edgecolor("#2a3a5a")
                         plt.tight_layout()
-                        with vcols[1]: st.pyplot(fig)
+                        with c1: st.pyplot(fig)
                         plt.close(fig)
                     except Exception: pass
 
-                    vcols2 = st.columns(2)
+                # Line
+                try:
+                    fig, ax = plt.subplots(figsize=(7, 4))
+                    fig.patch.set_facecolor("#0f1117"); ax.set_facecolor("#1a1f2e")
+                    colors = ["#38bdf8","#4ade80","#f97316","#c084fc"]
+                    for i, col in enumerate(numeric_cols[:4]):
+                        ax.plot(df[col].values, marker="o", label=col, color=colors[i%4], linewidth=2)
+                    ax.set_title("Numeric Trends", color="#e2e8f0")
+                    ax.tick_params(colors="#94a3b8")
+                    ax.legend(facecolor="#1a1f2e", labelcolor="#e2e8f0")
+                    for sp in ax.spines.values(): sp.set_edgecolor("#2a3a5a")
+                    plt.tight_layout()
+                    with c2: st.pyplot(fig)
+                    plt.close(fig)
+                except Exception: pass
 
-                    # Pie chart
-                    if cat_cols:
-                        try:
-                            pie_df = df.groupby(cat_cols[0])[numeric_cols[0]].sum().reset_index()
-                            if 2 <= len(pie_df) <= 10:
-                                fig, ax = plt.subplots(figsize=(5, 5))
-                                fig.patch.set_facecolor("#0f1117")
-                                pie_colors = ["#38bdf8","#4ade80","#f97316","#c084fc",
-                                              "#fb923c","#facc15","#34d399","#818cf8"]
-                                ax.pie(pie_df[numeric_cols[0]], labels=pie_df[cat_cols[0]].astype(str),
-                                       autopct="%1.1f%%", colors=pie_colors[:len(pie_df)],
-                                       textprops={"color": "#e2e8f0"})
-                                ax.set_title(f"{numeric_cols[0]} by {cat_cols[0]}", color="#e2e8f0")
-                                plt.tight_layout()
-                                with vcols2[0]: st.pyplot(fig)
-                                plt.close(fig)
-                        except Exception: pass
+                c3, c4 = st.columns(2)
 
-                    # Heatmap
-                    if len(numeric_cols) >= 3:
-                        try:
-                            corr = df[numeric_cols].corr()
-                            fig, ax = plt.subplots(figsize=(5, 4))
+                # Pie
+                if cat_cols:
+                    try:
+                        pie_df = df.groupby(cat_cols[0])[numeric_cols[0]].sum().reset_index()
+                        if 2 <= len(pie_df) <= 10:
+                            fig, ax = plt.subplots(figsize=(5, 5))
                             fig.patch.set_facecolor("#0f1117")
-                            ax.set_facecolor("#1a1f2e")
-                            im = ax.imshow(corr.values, cmap="coolwarm", aspect="auto")
-                            ax.set_xticks(range(len(corr.columns)))
-                            ax.set_yticks(range(len(corr.columns)))
-                            ax.set_xticklabels(corr.columns, rotation=45, ha="right", color="#94a3b8")
-                            ax.set_yticklabels(corr.columns, color="#94a3b8")
-                            for i in range(len(corr)):
-                                for j in range(len(corr.columns)):
-                                    ax.text(j, i, f"{corr.values[i,j]:.2f}",
-                                            ha="center", va="center", color="white", fontsize=8)
-                            plt.colorbar(im, ax=ax)
-                            ax.set_title("Correlation Heatmap", color="#e2e8f0")
+                            pie_colors = ["#38bdf8","#4ade80","#f97316","#c084fc","#fb923c","#facc15"]
+                            ax.pie(pie_df[numeric_cols[0]], labels=pie_df[cat_cols[0]].astype(str),
+                                   autopct="%1.1f%%", colors=pie_colors[:len(pie_df)],
+                                   textprops={"color":"#e2e8f0"})
+                            ax.set_title(f"{numeric_cols[0]} by {cat_cols[0]}", color="#e2e8f0")
                             plt.tight_layout()
-                            with vcols2[1]: st.pyplot(fig)
+                            with c3: st.pyplot(fig)
                             plt.close(fig)
-                        except Exception: pass
+                    except Exception: pass
+
+                # Heatmap
+                if len(numeric_cols) >= 3:
+                    try:
+                        corr = df[numeric_cols].corr()
+                        fig, ax = plt.subplots(figsize=(5, 4))
+                        fig.patch.set_facecolor("#0f1117"); ax.set_facecolor("#1a1f2e")
+                        im = ax.imshow(corr.values, cmap="coolwarm", aspect="auto")
+                        ax.set_xticks(range(len(corr.columns))); ax.set_yticks(range(len(corr.columns)))
+                        ax.set_xticklabels(corr.columns, rotation=45, ha="right", color="#94a3b8")
+                        ax.set_yticklabels(corr.columns, color="#94a3b8")
+                        for i in range(len(corr)):
+                            for j in range(len(corr.columns)):
+                                ax.text(j, i, f"{corr.values[i,j]:.2f}", ha="center", va="center",
+                                        color="white", fontsize=8)
+                        plt.colorbar(im, ax=ax)
+                        ax.set_title("Correlation Heatmap", color="#e2e8f0")
+                        plt.tight_layout()
+                        with c4: st.pyplot(fig)
+                        plt.close(fig)
+                    except Exception: pass
 
     except Exception as e:
         st.error(f"Dashboard error: {e}")
@@ -411,8 +404,14 @@ def main():
                     os.makedirs("chroma_db", exist_ok=True)
                     open(f"chroma_db/csv_{fname}", "wb").write(raw)
                 else:
-                    with open(fpath, "rb") as f:
-                        chunks = parse_pdf(f)
+                    import io as _io
+                    with open(fpath, "rb") as _f:
+                        class _FakeFile:
+                            def __init__(self, b, n): self._b = b; self.name = n
+                            def read(self): return self._b
+                            def seek(self, *a): pass
+                        fake = _FakeFile(open(fpath, "rb").read(), fname)
+                    chunks = parse_pdf(fake)
                     add_chunks(chunks)
                     full_text = " ".join(c["text"] for c in chunks)
                     summary = generate_doc_summary(full_text)
