@@ -95,9 +95,10 @@ def generate_doc_summary(text: str) -> str:
 
 
 def handle_upload(uploaded_files):
-    for f in uploaded_files:
-        if f.name in st.session_state.processed_files:
-            continue
+    new_files = [f for f in uploaded_files if f.name not in st.session_state.processed_files]
+    if not new_files:
+        return
+    for f in new_files:
         with st.spinner(f"Processing {f.name}..."):
             try:
                 if f.name.endswith(".csv"):
@@ -117,12 +118,13 @@ def handle_upload(uploaded_files):
                     summary = generate_doc_summary(full_text)
                     st.session_state.doc_summaries[f.name] = summary
                     st.session_state.processed_files.add(f.name)
-                    # Persist summaries to disk so they survive refresh
                     import json, os
                     os.makedirs("chroma_db", exist_ok=True)
-                    json.dump(st.session_state.doc_summaries, open("chroma_db/doc_summaries.json","w"))
+                    json.dump(st.session_state.doc_summaries, open("chroma_db/doc_summaries.json", "w"))
             except Exception as e:
                 st.error(f"Failed to process {f.name}: {e}")
+    # Rerun so sidebar redraws cleanly without spinners pushing mic off screen
+    st.rerun()
 
 
 def render_sidebar():
