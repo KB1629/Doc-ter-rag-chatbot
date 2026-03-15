@@ -94,6 +94,57 @@ def generate_doc_summary(text: str) -> str:
         return "Summary unavailable."
 
 
+def generate_dashboard_analysis(doc_summaries: dict, csv_name: str, df) -> tuple:
+    """
+    One LLM call: returns (pdf_summaries dict, csv_summary str, chart_plan list of dicts).
+    chart_plan: [{"title": ..., "x": col, "y": col, "type": "bar"|"line"|"pie"|"scatter"}]
+    """
+    try:
+        llm = get_llm()
+        pdf_section = "\n".join(
+            f"- {name}: {summary[:500]}" for name, summary in doc_summaries.items()
+        ) or "No PDFs loaded."
+        csv_section = f"CSV '{csv_name}' columns: {list(df.columns)}, {len(df)} rows." if df is not None else "No CSV loaded."
+        numeric_cols = df.select_dtypes(include="number").columns.tolist() if df is not None else []
+        cat_cols = df.select_dtypes(exclude="number").columns.tolist() if df is not None else []
+
+        prompt = f"""You are analysing uploaded files for a student career dashboard.
+
+PDFs loaded:
+{pdf_section}
+
+{csv_section}
+Numeric columns: {numeric_cols}
+Categorical columns: {cat_cols}
+
+Tasks:
+1. For each PDF, write a 3-4 line summary describing what the file is and what key content it contains (skills, goals, experience, etc.). Return as JSON key = filename, value = summary.
+2. Write a 1-2 line summary of the CSV data.
+3. Suggest 2-3 DISTINCT meaningful chart plans using DIFFERENT column combinations. Each chart should show something different. Return as a JSON list with keys: title, x, y, type (bar/line/pie/scatter). Only use columns that exist: {list(df.columns) if df is not None else []}.
+
+Return ONLY valid JSON in this exact format:
+{{
+  "pdf_summaries": {{"filename.pdf": "summary..."}},
+  "csv_summary": "...",
+  "charts": [{{"title": "...", "x": "col", "y": "col", "type": "bar"}}]
+}}"""
+
+        raw = llm.invoke([HumanMessage(content=prompt)]).content.strip()
+        # Extract JSON from response
+        import json, re
+        match = re.search(r'\{.*\}', raw, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+            return (
+                data.get("pdf_summaries", {}),
+                data.get("csv_summary", ""),
+                data.get("charts", [])
+            )
+    except Exception:
+        pass
+    return {}, "", []
+
+
 def handle_upload(uploaded_files):
     new_files = [f for f in uploaded_files if f.name not in st.session_state.processed_files]
     if not new_files:
@@ -143,11 +194,9 @@ def render_sidebar():
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("🗑️ Clear", use_container_width=True):
-                    st.session_state.messages = []
-                    st.session_state.processed_files = set()
-                    st.session_state.doc_summaries = {}
-                    st.session_state.csv_dataframes = {}
-                    st.session_state.csv_bytes = {}
+                    for k in ["messages","processed_files","doc_summaries","csv_dataframes",
+                              "csv_bytes","dashboard_analysed","dash_pdf_sums","dash_csv_sum","dash_chart_plan"]:
+                        st.session_state[k] = [] if k == "messages" else ({} if k in ["doc_summaries","csv_dataframes","csv_bytes","dash_pdf_sums"] else (set() if k == "processed_files" else (False if k == "dashboard_analysed" else "")))
                     clear_collection()
                     import os, glob
                     for f in glob.glob("chroma_db/csv_*"):
@@ -172,10 +221,10 @@ def render_sidebar():
 
 
 def render_dashboard(combined_csv):
-    """Tab 1 — Dashboard: upload, one Analyse All button, summaries + charts."""
+    """Tab 1 — Dashboard: upload, one Analyse All button, LLM summaries + smart charts."""
     try:
         st.markdown("## 📊 Dashboard")
-        st.caption("Upload your files here. Click **Analyse All** to see summaries, data, and charts.")
+        st.caption("Upload your files here. Click **Analyse All** to see summaries and charts.")
 
         uploaded_files = st.file_uploader(
             "Upload PDF(s) or CSV(s)", type=["pdf", "csv"],
@@ -192,15 +241,23 @@ def render_dashboard(combined_csv):
 
         st.divider()
 
-        # Show loaded files compactly
+        # Compact file list
         if stored:
             st.markdown("**📄 Documents:** " + "  |  ".join(f"`{s}`" for s in stored))
+        csv_name, df = None, None
         if st.session_state.get("csv_dataframes"):
-            for name, df in st.session_state.csv_dataframes.items():
-                st.markdown(f"**📊 CSV:** `{name}` — {len(df)} rows × {len(df.columns)} cols")
+            csv_name, df = next(iter(st.session_state.csv_dataframes.items()))
+            st.markdown(f"**📊 CSV:** `{csv_name}` — {len(df)} rows × {len(df.columns)} cols")
 
-        if st.button("🔍 Analyse All", type="primary", use_container_width=False):
-            st.session_state["dashboard_analysed"] = True
+        if st.button("🔍 Analyse All", type="primary"):
+            with st.spinner("Analysing files..."):
+                pdf_sums, csv_sum, chart_plan = generate_dashboard_analysis(
+                    st.session_state.doc_summaries, csv_name, df
+                )
+                st.session_state["dash_pdf_sums"] = pdf_sums
+                st.session_state["dash_csv_sum"] = csv_sum
+                st.session_state["dash_chart_plan"] = chart_plan
+                st.session_state["dashboard_analysed"] = True
 
         if not st.session_state.get("dashboard_analysed"):
             return
@@ -210,114 +267,79 @@ def render_dashboard(combined_csv):
         # ── PDF Summaries ─────────────────────────────────────────────────
         if stored:
             st.markdown("### 📄 Document Summaries")
+            pdf_sums = st.session_state.get("dash_pdf_sums", {})
             for src in stored:
                 st.markdown(f"**`{src}`**")
-                if src not in st.session_state.doc_summaries:
-                    with st.spinner(f"Summarising {src}..."):
-                        try:
-                            # Use stored summary text from session or fallback
-                            summary = generate_doc_summary(
-                                st.session_state.doc_summaries.get(src, "No content available.")
-                            )
-                            st.session_state.doc_summaries[src] = summary
-                            import json, os
-                            os.makedirs("chroma_db", exist_ok=True)
-                            json.dump(st.session_state.doc_summaries,
-                                      open("chroma_db/doc_summaries.json", "w"))
-                        except Exception as e:
-                            st.error(f"Summary error: {e}")
-                if src in st.session_state.doc_summaries:
-                    st.info(st.session_state.doc_summaries[src])
+                # match by basename
+                summary = next(
+                    (v for k, v in pdf_sums.items() if os.path.basename(k) == src or k == src),
+                    st.session_state.doc_summaries.get(src, "Summary unavailable.")
+                )
+                st.info(summary)
 
-        # ── CSV Data + Charts ─────────────────────────────────────────────
-        if st.session_state.get("csv_dataframes"):
+        # ── CSV Summary + Charts ──────────────────────────────────────────
+        if df is not None:
             st.markdown("### 📊 CSV Data & Visualisations")
-            for name, df in st.session_state.csv_dataframes.items():
-                st.markdown(f"**`{name}`**")
-                st.dataframe(df, use_container_width=True, height=300)
+            csv_sum = st.session_state.get("dash_csv_sum", "")
+            if csv_sum:
+                st.info(csv_sum)
+            st.dataframe(df, use_container_width=True, height=300)
 
-                numeric_cols = df.select_dtypes(include="number").columns.tolist()
-                cat_cols = df.select_dtypes(exclude="number").columns.tolist()
-                if not numeric_cols:
-                    st.info("No numeric columns for charts.")
-                    continue
-
+            chart_plan = st.session_state.get("dash_chart_plan", [])
+            if not chart_plan:
+                st.info("No chart suggestions from LLM.")
+            else:
                 import matplotlib
                 matplotlib.use("Agg")
                 import matplotlib.pyplot as plt
 
-                c1, c2 = st.columns(2)
+                cols = st.columns(2)
+                COLORS = ["#38bdf8","#4ade80","#f97316","#c084fc","#fb923c","#facc15"]
 
-                # Bar
-                if cat_cols:
+                for i, chart in enumerate(chart_plan[:4]):
+                    ctype = chart.get("type", "bar")
+                    x_col = chart.get("x")
+                    y_col = chart.get("y")
+                    title = chart.get("title", f"Chart {i+1}")
+
+                    if x_col not in df.columns or (y_col and y_col not in df.columns):
+                        continue
+
                     try:
                         fig, ax = plt.subplots(figsize=(7, 4))
-                        fig.patch.set_facecolor("#0f1117"); ax.set_facecolor("#1a1f2e")
-                        plot_df = df[[cat_cols[0], numeric_cols[0]]].dropna()
-                        ax.bar(plot_df[cat_cols[0]].astype(str), plot_df[numeric_cols[0]], color="#38bdf8")
-                        ax.set_title(f"{numeric_cols[0]} by {cat_cols[0]}", color="#e2e8f0")
-                        ax.tick_params(colors="#94a3b8"); plt.xticks(rotation=45, ha="right")
+                        fig.patch.set_facecolor("#0f1117")
+                        ax.set_facecolor("#1a1f2e")
+                        ax.tick_params(colors="#94a3b8")
                         for sp in ax.spines.values(): sp.set_edgecolor("#2a3a5a")
+
+                        if ctype == "bar" and y_col:
+                            plot_df = df[[x_col, y_col]].dropna()
+                            ax.bar(plot_df[x_col].astype(str), plot_df[y_col], color="#38bdf8")
+                            plt.xticks(rotation=45, ha="right")
+                        elif ctype == "line" and y_col:
+                            plot_df = df[[x_col, y_col]].dropna().sort_values(x_col)
+                            ax.plot(plot_df[x_col].astype(str), plot_df[y_col],
+                                    marker="o", color="#4ade80", linewidth=2)
+                            plt.xticks(rotation=45, ha="right")
+                        elif ctype == "scatter" and y_col:
+                            ax.scatter(df[x_col], df[y_col], color="#f97316", alpha=0.7)
+                            ax.set_xlabel(x_col, color="#94a3b8")
+                            ax.set_ylabel(y_col, color="#94a3b8")
+                        elif ctype == "pie":
+                            pie_df = df.groupby(x_col)[y_col].sum() if y_col else df[x_col].value_counts()
+                            if 2 <= len(pie_df) <= 10:
+                                ax.pie(pie_df.values, labels=pie_df.index.astype(str),
+                                       autopct="%1.1f%%",
+                                       colors=COLORS[:len(pie_df)],
+                                       textprops={"color": "#e2e8f0"})
+
+                        ax.set_title(title, color="#e2e8f0")
                         plt.tight_layout()
-                        with c1: st.pyplot(fig)
+                        with cols[i % 2]:
+                            st.pyplot(fig)
                         plt.close(fig)
-                    except Exception: pass
-
-                # Line
-                try:
-                    fig, ax = plt.subplots(figsize=(7, 4))
-                    fig.patch.set_facecolor("#0f1117"); ax.set_facecolor("#1a1f2e")
-                    colors = ["#38bdf8","#4ade80","#f97316","#c084fc"]
-                    for i, col in enumerate(numeric_cols[:4]):
-                        ax.plot(df[col].values, marker="o", label=col, color=colors[i%4], linewidth=2)
-                    ax.set_title("Numeric Trends", color="#e2e8f0")
-                    ax.tick_params(colors="#94a3b8")
-                    ax.legend(facecolor="#1a1f2e", labelcolor="#e2e8f0")
-                    for sp in ax.spines.values(): sp.set_edgecolor("#2a3a5a")
-                    plt.tight_layout()
-                    with c2: st.pyplot(fig)
-                    plt.close(fig)
-                except Exception: pass
-
-                c3, c4 = st.columns(2)
-
-                # Pie
-                if cat_cols:
-                    try:
-                        pie_df = df.groupby(cat_cols[0])[numeric_cols[0]].sum().reset_index()
-                        if 2 <= len(pie_df) <= 10:
-                            fig, ax = plt.subplots(figsize=(5, 5))
-                            fig.patch.set_facecolor("#0f1117")
-                            pie_colors = ["#38bdf8","#4ade80","#f97316","#c084fc","#fb923c","#facc15"]
-                            ax.pie(pie_df[numeric_cols[0]], labels=pie_df[cat_cols[0]].astype(str),
-                                   autopct="%1.1f%%", colors=pie_colors[:len(pie_df)],
-                                   textprops={"color":"#e2e8f0"})
-                            ax.set_title(f"{numeric_cols[0]} by {cat_cols[0]}", color="#e2e8f0")
-                            plt.tight_layout()
-                            with c3: st.pyplot(fig)
-                            plt.close(fig)
-                    except Exception: pass
-
-                # Heatmap
-                if len(numeric_cols) >= 3:
-                    try:
-                        corr = df[numeric_cols].corr()
-                        fig, ax = plt.subplots(figsize=(5, 4))
-                        fig.patch.set_facecolor("#0f1117"); ax.set_facecolor("#1a1f2e")
-                        im = ax.imshow(corr.values, cmap="coolwarm", aspect="auto")
-                        ax.set_xticks(range(len(corr.columns))); ax.set_yticks(range(len(corr.columns)))
-                        ax.set_xticklabels(corr.columns, rotation=45, ha="right", color="#94a3b8")
-                        ax.set_yticklabels(corr.columns, color="#94a3b8")
-                        for i in range(len(corr)):
-                            for j in range(len(corr.columns)):
-                                ax.text(j, i, f"{corr.values[i,j]:.2f}", ha="center", va="center",
-                                        color="white", fontsize=8)
-                        plt.colorbar(im, ax=ax)
-                        ax.set_title("Correlation Heatmap", color="#e2e8f0")
-                        plt.tight_layout()
-                        with c4: st.pyplot(fig)
-                        plt.close(fig)
-                    except Exception: pass
+                    except Exception:
+                        plt.close("all")
 
     except Exception as e:
         st.error(f"Dashboard error: {e}")
