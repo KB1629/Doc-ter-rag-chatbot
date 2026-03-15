@@ -10,9 +10,7 @@ from utils.document_loader import parse_pdf
 from utils.vector_store import add_chunks, clear_collection, get_stored_sources
 from utils.rag_chain import ask
 from utils.voice import text_to_speech, speech_to_text
-from utils.data_analyzer import load_csv, query_csv, generate_chart
-from models.llm import get_llm
-from langchain_core.messages import HumanMessage
+from utils.data_analyzer import load_csv, query_csv, generate_chart, generate_doc_summary, generate_dashboard_analysis
 
 st.set_page_config(page_title="Analyser Bot", page_icon="🔬", layout="wide")
 
@@ -83,66 +81,6 @@ BADGE = {
     "all":     '<span class="source-badge badge-both">📊📄🌐 All Sources</span>',
     "error":   '<span class="source-badge badge-llm">⚠️ Error</span>',
 }
-
-
-def generate_doc_summary(text: str) -> str:
-    try:
-        llm = get_llm()
-        prompt = f"Summarise the following document in exactly 3 concise sentences:\n\n{text[:3000]}"
-        return llm.invoke([HumanMessage(content=prompt)]).content
-    except Exception:
-        return "Summary unavailable."
-
-
-def generate_dashboard_analysis(doc_summaries: dict, csv_name: str, df) -> tuple:
-    """
-    One LLM call: returns (pdf_summaries dict, csv_summary str, chart_plan list of dicts).
-    chart_plan: [{"title": ..., "x": col, "y": col, "type": "bar"|"line"|"pie"|"scatter"}]
-    """
-    try:
-        llm = get_llm()
-        pdf_section = "\n".join(
-            f"- {name}: {summary[:500]}" for name, summary in doc_summaries.items()
-        ) or "No PDFs loaded."
-        csv_section = f"CSV '{csv_name}' columns: {list(df.columns)}, {len(df)} rows." if df is not None else "No CSV loaded."
-        numeric_cols = df.select_dtypes(include="number").columns.tolist() if df is not None else []
-        cat_cols = df.select_dtypes(exclude="number").columns.tolist() if df is not None else []
-
-        prompt = f"""You are analysing uploaded files for a student career dashboard.
-
-PDFs loaded:
-{pdf_section}
-
-{csv_section}
-Numeric columns: {numeric_cols}
-Categorical columns: {cat_cols}
-
-Tasks:
-1. For each PDF, write a 3-4 line summary describing what the file is and what key content it contains (skills, goals, experience, etc.). Return as JSON key = filename, value = summary.
-2. Write a 1-2 line summary of the CSV data.
-3. Suggest 2-3 DISTINCT meaningful chart plans using DIFFERENT column combinations. Each chart should show something different. Return as a JSON list with keys: title, x, y, type (bar/line/pie/scatter). Only use columns that exist: {list(df.columns) if df is not None else []}.
-
-Return ONLY valid JSON in this exact format:
-{{
-  "pdf_summaries": {{"filename.pdf": "summary..."}},
-  "csv_summary": "...",
-  "charts": [{{"title": "...", "x": "col", "y": "col", "type": "bar"}}]
-}}"""
-
-        raw = llm.invoke([HumanMessage(content=prompt)]).content.strip()
-        # Extract JSON from response
-        import json, re
-        match = re.search(r'\{.*\}', raw, re.DOTALL)
-        if match:
-            data = json.loads(match.group())
-            return (
-                data.get("pdf_summaries", {}),
-                data.get("csv_summary", ""),
-                data.get("charts", [])
-            )
-    except Exception:
-        pass
-    return {}, "", []
 
 
 def handle_upload(uploaded_files):

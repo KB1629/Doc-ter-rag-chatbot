@@ -173,3 +173,64 @@ def generate_chart(result_df: pd.DataFrame, query: str) -> bytes:
 
     except Exception as e:
         raise RuntimeError(f"Chart generation failed: {e}")
+
+
+def generate_doc_summary(text: str) -> str:
+    """Generate a 3-sentence summary of a document's text via LLM."""
+    try:
+        llm = _get_llm()
+        prompt = f"Summarise the following document in exactly 3 concise sentences:\n\n{text[:3000]}"
+        return llm.invoke([HumanMessage(content=prompt)]).content
+    except Exception:
+        return "Summary unavailable."
+
+
+def generate_dashboard_analysis(doc_summaries: dict, csv_name: str, df: pd.DataFrame) -> tuple:
+    """
+    One LLM call: returns (pdf_summaries dict, csv_summary str, chart_plan list).
+    chart_plan: [{"title":..., "x":col, "y":col, "type":"bar"|"line"|"pie"|"scatter"}]
+    """
+    try:
+        import json, re
+        llm = _get_llm()
+        pdf_section = "\n".join(f"- {n}: {s[:400]}" for n, s in doc_summaries.items()) or "No PDFs."
+        csv_section = (
+            f"CSV '{csv_name}' columns: {list(df.columns)}, {len(df)} rows."
+            if df is not None else "No CSV."
+        )
+        numeric_cols = df.select_dtypes(include="number").columns.tolist() if df is not None else []
+        cat_cols = df.select_dtypes(exclude="number").columns.tolist() if df is not None else []
+        all_cols = list(df.columns) if df is not None else []
+
+        prompt = f"""Analyse these uploaded student files and return ONLY valid JSON.
+
+PDFs: {pdf_section}
+{csv_section}
+Numeric columns: {numeric_cols}, Categorical columns: {cat_cols}
+
+Return JSON:
+{{
+  "pdf_summaries": {{"filename.pdf": "3-4 line summary of what this file is and its key content"}},
+  "csv_summary": "1-2 line summary of the CSV data",
+  "charts": [
+    {{"title": "...", "x": "col", "y": "col", "type": "bar|line|pie|scatter"}}
+  ]
+}}
+Rules:
+- pdf_summaries: one entry per PDF, 3-4 lines describing the file content (skills, goals, experience etc.)
+- charts: 2-3 DISTINCT charts using DIFFERENT column combinations from {all_cols}
+- Only use columns that exist in the list above
+- Do not repeat the same x+y pair across charts"""
+
+        raw = llm.invoke([HumanMessage(content=prompt)]).content.strip()
+        match = re.search(r'\{.*\}', raw, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+            return (
+                data.get("pdf_summaries", {}),
+                data.get("csv_summary", ""),
+                data.get("charts", [])
+            )
+    except Exception:
+        pass
+    return {}, "", []
