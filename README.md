@@ -10,13 +10,12 @@
 
 Sample test files are included in the `tests/` folder — no need to prepare anything.
 
-1. Go to the **[live app](https://doc-ter--chatbot.streamlit.app)** — sample files are already pre-loaded
-2. Or upload your own files via the **sidebar uploader** (PDF or CSV)
-3. PDF summaries appear instantly in the sidebar
-4. CSV preview (scrollable) appears in the sidebar
-5. Start asking questions in the chat box
+1. Go to the **[live app](https://doc-ter--chatbot.streamlit.app)** — sample files are pre-loaded automatically
+2. On the **📊 Dashboard** tab — click **🔍 Analyse All** to see PDF summaries and CSV charts
+3. Switch to the **💬 Chat** tab — ask any question in natural language
+4. Or upload your own files via the **Dashboard uploader** (PDF or CSV)
 
-**Try these questions to test all features:**
+**Try these questions in the Chat tab:**
 - `"What is my average marks across all semesters?"` → SQL + chart
 - `"What skills are listed in my resume?"` → RAG from PDF
 - `"What does Google require for a Data Engineer?"` → Live web search
@@ -56,7 +55,7 @@ They then ask:
 | Feature | Description |
 |---|---|
 | 📊 Text-to-SQL on CSV | Upload marks or any structured data — the bot generates SQL, runs it, and explains results in plain English |
-| 📈 Auto Chart Generation | Bar charts and line graphs generated automatically from SQL results — zero manual configuration |
+| 📈 Auto Chart Generation | Smart charts generated from SQL results and dashboard analysis — LLM picks the best visualisations |
 | 📄 RAG on PDFs | Resume, goal statements, or any PDF indexed into ChromaDB for semantic retrieval |
 | 🌐 Live Web Search | Real-time Tavily search for job requirements, industry trends, company expectations |
 | 🤖 Smart Auto-Routing | LLM decides which source(s) to use per query — SQL, RAG, web, or all three |
@@ -64,7 +63,7 @@ They then ask:
 | 🎙️ Voice Input | Speak questions via browser mic using `streamlit-mic-recorder` |
 | 🔊 Voice Output | Click Listen on any response for high-quality neural TTS via `edge-tts` |
 | ⚡ Concise / Detailed | Toggle response length — 2-sentence summary or full explanation |
-| 📋 Document Summaries | Auto-generated 3-line summary for every uploaded PDF |
+| 📋 Dashboard | Upload tab with one-click Analyse All — LLM summaries per PDF + smart CSV charts |
 | ⬇️ Download Chat | Export full conversation as a Markdown file |
 | 🏷️ Source Badges | Each response labelled: Documents / Web / Data / General Knowledge |
 
@@ -76,7 +75,7 @@ They then ask:
 analyser-bot/
 ├── config/
 │   ├── __init__.py
-│   └── config.py          ← API keys loaded from .env, project-wide constants
+│   └── config.py          ← API keys loaded from .env / st.secrets, project constants
 ├── models/
 │   ├── __init__.py
 │   ├── llm.py             ← Groq LLM initialisation (llama-3.3-70b-versatile)
@@ -85,12 +84,17 @@ analyser-bot/
 │   ├── __init__.py
 │   ├── document_loader.py ← PDF parsing and text chunking (pymupdf4llm)
 │   ├── vector_store.py    ← ChromaDB storage and similarity search
-│   ├── web_search.py      ← Tavily live web search wrapper
+│   ├── web_search.py      ← Tavily live web search wrapper (with retry)
 │   ├── rag_chain.py       ← Multi-source routing, prompt building, LLM orchestration
 │   ├── voice.py           ← Speech-to-text (SpeechRecognition) and TTS (edge-tts)
-│   └── data_analyzer.py   ← Text-to-SQL pipeline, result explanation, chart generation
-├── app.py                 ← Main Streamlit UI
+│   └── data_analyzer.py   ← Text-to-SQL, chart generation, dashboard LLM analysis
+├── tests/
+│   ├── arjun_sharma_resume.pdf       ← Sample student resume
+│   ├── arjun_sharma_career_goal.pdf  ← Sample career goal statement
+│   └── btech_marks.csv               ← Sample B.Tech semester marks
+├── app.py                 ← Main Streamlit UI (Dashboard + Chat tabs)
 ├── requirements.txt       ← Python dependencies
+├── packages.txt           ← System packages (ffmpeg for voice)
 ├── .env                   ← API keys (not committed)
 └── README.md
 ```
