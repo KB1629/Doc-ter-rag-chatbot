@@ -213,10 +213,9 @@ A `tests/` folder is included in this repository with ready-to-use sample files:
 | `btech_marks.csv` | CSV | B.Tech semester marks across 4 semesters (24 rows × 6 cols) |
 
 **How to use:**
-1. Upload all three files via the sidebar uploader on the live app
-2. PDF summaries will appear instantly in the sidebar
-3. CSV preview (scrollable) will appear in the sidebar
-4. Start asking questions — the sample data is already loaded on the deployed app for anyone to test directly
+1. Open the live app — all three files are **auto-loaded on first visit**, no upload needed
+2. Go to the **📊 Dashboard** tab and click **🔍 Analyse All** to see summaries and charts
+3. Switch to the **💬 Chat** tab and start asking questions immediately
 
 > The live app at https://doc-ter--chatbot.streamlit.app already has these files pre-loaded so you can test all features immediately without uploading anything.
 
