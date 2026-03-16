@@ -10,7 +10,7 @@ from utils.document_loader import parse_pdf
 from utils.vector_store import add_chunks, clear_collection, get_stored_sources
 from utils.rag_chain import ask
 from utils.voice import text_to_speech, speech_to_text
-from utils.data_analyzer import load_csv, query_csv, generate_chart, generate_doc_summary, generate_dashboard_analysis
+from utils.data_analyzer import load_csv, query_csv, generate_chart, generate_dashboard_analysis
 
 st.set_page_config(page_title="Analyser Bot", page_icon="🔬", layout="wide")
 
@@ -99,20 +99,14 @@ def handle_upload(uploaded_files):
                     import os
                     os.makedirs("chroma_db", exist_ok=True)
                     open(f"chroma_db/csv_{f.name}", "wb").write(raw)
-                    st.session_state.processed_files.add(f.name)
                 else:
                     chunks = parse_pdf(f)
                     add_chunks(chunks)
                     full_text = " ".join(c["text"] for c in chunks)
-                    summary = generate_doc_summary(full_text)
-                    st.session_state.doc_summaries[f.name] = summary
-                    st.session_state.processed_files.add(f.name)
-                    import json, os
-                    os.makedirs("chroma_db", exist_ok=True)
-                    json.dump(st.session_state.doc_summaries, open("chroma_db/doc_summaries.json", "w"))
+                    st.session_state.pdf_texts[f.name] = full_text
+                st.session_state.processed_files.add(f.name)
             except Exception as e:
                 st.error(f"Failed to process {f.name}: {e}")
-    # Rerun so sidebar redraws cleanly without spinners pushing mic off screen
     st.rerun()
 
 
@@ -132,15 +126,13 @@ def render_sidebar():
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("🗑️ Clear", use_container_width=True):
-                    for k in ["messages","processed_files","doc_summaries","csv_dataframes",
+                    for k in ["messages","processed_files","doc_summaries","pdf_texts","csv_dataframes",
                               "csv_bytes","dashboard_analysed","dash_pdf_sums","dash_csv_sum","dash_chart_plan"]:
-                        st.session_state[k] = [] if k == "messages" else ({} if k in ["doc_summaries","csv_dataframes","csv_bytes","dash_pdf_sums"] else (set() if k == "processed_files" else (False if k == "dashboard_analysed" else "")))
+                        st.session_state[k] = [] if k == "messages" else ({} if k in ["doc_summaries","pdf_texts","csv_dataframes","csv_bytes","dash_pdf_sums"] else (set() if k == "processed_files" else (False if k == "dashboard_analysed" else "")))
                     clear_collection()
                     import os, glob
                     for f in glob.glob("chroma_db/csv_*"):
                         os.remove(f)
-                    if os.path.exists("chroma_db/doc_summaries.json"):
-                        os.remove("chroma_db/doc_summaries.json")
                     st.rerun()
             with col2:
                 chat_text = "\n\n".join(
@@ -191,7 +183,7 @@ def render_dashboard(combined_csv):
             with st.spinner("Analysing files..."):
                 try:
                     pdf_sums, csv_sum, chart_plan = generate_dashboard_analysis(
-                        st.session_state.doc_summaries, csv_name, df
+                        st.session_state.pdf_texts, csv_name, df
                     )
                     st.session_state["dash_pdf_sums"] = pdf_sums
                     st.session_state["dash_csv_sum"] = csv_sum
@@ -211,10 +203,9 @@ def render_dashboard(combined_csv):
             pdf_sums = st.session_state.get("dash_pdf_sums", {})
             for src in stored:
                 st.markdown(f"**`{src}`**")
-                # match by basename
                 summary = next(
                     (v for k, v in pdf_sums.items() if os.path.basename(k) == src or k == src),
-                    st.session_state.doc_summaries.get(src, "Summary unavailable.")
+                    "Summary unavailable."
                 )
                 st.info(summary)
 
@@ -333,6 +324,7 @@ def main():
         ("messages", []),
         ("processed_files", set()),
         ("doc_summaries", {}),
+        ("pdf_texts", {}),
         ("csv_dataframes", {}),
         ("csv_bytes", {}),
         ("msg_counter", 0),
@@ -376,26 +368,13 @@ def main():
                     chunks = parse_pdf(io.BytesIO(raw), source_name=fname)
                     add_chunks(chunks)
                     full_text = " ".join(c["text"] for c in chunks)
-                    summary = generate_doc_summary(full_text)
-                    st.session_state.doc_summaries[fname] = summary
-                    import json
-                    os.makedirs("chroma_db", exist_ok=True)
-                    json.dump(st.session_state.doc_summaries, open("chroma_db/doc_summaries.json", "w"))
+                    st.session_state.pdf_texts[fname] = full_text
                 st.session_state.processed_files.add(fname)
                 preloaded = True
             except Exception:
                 pass
         if preloaded:
             st.rerun()
-
-    # Restore doc summaries from disk after page refresh
-    import json
-    _summary_path = "chroma_db/doc_summaries.json"
-    if not st.session_state.doc_summaries and os.path.exists(_summary_path):
-        try:
-            st.session_state.doc_summaries = json.load(open(_summary_path))
-        except Exception:
-            pass
 
     mode, audio = render_sidebar()
     has_docs = bool(get_stored_sources())

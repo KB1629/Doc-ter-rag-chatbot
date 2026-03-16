@@ -272,35 +272,18 @@ def generate_doc_summary(text: str) -> str:
         return "Summary unavailable."
 
 
-def generate_dashboard_analysis(doc_summaries: dict, csv_name: str, df: pd.DataFrame) -> tuple:
+def generate_dashboard_analysis(pdf_texts: dict, csv_name: str, df: pd.DataFrame) -> tuple:
     """
-    One LLM call: returns (pdf_summaries dict, csv_summary str, chart_plan list).
-    If doc_summaries is empty, retrieves text from ChromaDB and generates summaries first.
+    Single LLM call: takes raw PDF texts + CSV DataFrame.
+    Returns (pdf_summaries dict, csv_summary str, chart_plan list).
     """
     try:
         import json, re
-        from utils.vector_store import get_stored_sources, _get_collection
-        from models.embeddings import embed_texts
-
-        # If no summaries cached, build them from ChromaDB per source
-        if not doc_summaries:
-            collection = _get_collection()
-            for src in get_stored_sources():
-                try:
-                    results = collection.query(
-                        query_embeddings=[embed_texts([src])[0]],
-                        n_results=min(6, collection.count()),
-                        where={"source": src},
-                        include=["documents"]
-                    )
-                    text = " ".join(results["documents"][0])[:2000]
-                    if text.strip():
-                        doc_summaries[src] = generate_doc_summary(text)
-                except Exception:
-                    pass
-
         llm = _get_llm()
-        pdf_section = "\n".join(f"- {n}: {s[:400]}" for n, s in doc_summaries.items()) or "No PDFs."
+
+        pdf_section = "\n".join(
+            f"--- {name} ---\n{text[:1500]}" for name, text in pdf_texts.items()
+        ) if pdf_texts else "No PDFs uploaded."
 
         if df is not None:
             numeric_cols = df.select_dtypes(include="number").columns.tolist()
@@ -312,37 +295,36 @@ def generate_dashboard_analysis(doc_summaries: dict, csv_name: str, df: pd.DataF
                 f"Numeric columns with meaningful variance: {useful_numeric}"
             )
         else:
-            csv_info = "No CSV loaded."
-            useful_numeric, cat_cols = [], []
+            csv_info = "No CSV uploaded."
+            useful_numeric = []
 
-        prompt = f"""You are a data visualisation expert analysing student career files.
+        prompt = f"""You are analysing student career documents. Read the content below and return ONLY valid JSON (no markdown fences).
 
-PDFs:
 {pdf_section}
 
 {csv_info}
 
-Return ONLY a valid JSON object (no markdown fences):
+Return this exact JSON structure:
 {{
-  "pdf_summaries": {{"filename.pdf": "3-4 sentence summary of the document"}},
-  "csv_summary": "1-2 sentence description of the CSV data",
+  "pdf_summaries": {{"filename.pdf": "3-4 sentence summary of what this document contains and what is useful in it"}},
+  "csv_summary": "1-2 sentences describing the CSV data and what insights it offers",
   "charts": [
     {{
-      "title": "Marks Scored per Subject",
+      "title": "descriptive chart title",
       "type": "bar",
-      "x": "Subject",
-      "y": "Marks",
-      "xlabel": "Subject Name",
-      "ylabel": "Marks Scored (out of 100)"
+      "x": "column_name",
+      "y": "column_name",
+      "xlabel": "human readable x label",
+      "ylabel": "human readable y label with units"
     }}
   ]
 }}
 
-Rules for charts:
+Chart rules:
 - Use ONLY column names from: {list(df.columns) if df is not None else []}
-- Y axis must be from meaningful numeric columns: {useful_numeric}
+- Y axis must be from: {useful_numeric}
 - Suggest 2-3 charts with different x+y pairs
-- Types: bar (compare categories), line (trend), pie (proportions, max 10 unique), scatter (correlation)"""
+- Types: bar (compare categories), line (trend over ordered values), pie (proportions, max 10 unique values), scatter (two numeric columns)"""
 
         raw = llm.invoke([HumanMessage(content=prompt)]).content.strip()
         match = re.search(r'\{.*\}', raw, re.DOTALL)
@@ -353,7 +335,7 @@ Rules for charts:
         if df is not None:
             charts = [
                 c for c in charts
-                if c.get("y") in df.columns and c.get("x") in df.columns
+                if c.get("x") in df.columns and c.get("y") in df.columns
                 and (c.get("y") not in df.select_dtypes(include="number").columns
                      or df[c["y"]].var() > 1.0)
             ]
