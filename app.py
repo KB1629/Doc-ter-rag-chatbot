@@ -227,90 +227,58 @@ def render_dashboard(combined_csv):
             import matplotlib
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt
-
-            numeric_cols = df.select_dtypes(include="number").columns.tolist()
-            cat_cols = df.select_dtypes(exclude="number").columns.tolist()
             COLORS = ["#38bdf8","#4ade80","#f97316","#c084fc","#fb923c","#facc15"]
 
-            def _style(fig, ax, title, xlabel=None, ylabel=None):
-                fig.patch.set_facecolor("#0f1117")
-                ax.set_facecolor("#1a1f2e")
-                ax.tick_params(colors="#94a3b8")
-                for sp in ax.spines.values(): sp.set_edgecolor("#2a3a5a")
-                ax.set_title(title, color="#e2e8f0", pad=10)
-                if xlabel: ax.set_xlabel(xlabel, color="#94a3b8")
-                if ylabel: ax.set_ylabel(ylabel, color="#94a3b8")
-                plt.tight_layout()
+            if not chart_plan:
+                st.info("No charts generated.")
+            else:
+                cols = st.columns(2)
+                for i, chart in enumerate(chart_plan[:4]):
+                    x_col = chart.get("x")
+                    y_col = chart.get("y")
+                    ctype = chart.get("type", "bar")
+                    title = chart.get("title", f"Chart {i+1}")
+                    xlabel = chart.get("xlabel", x_col)
+                    ylabel = chart.get("ylabel", y_col)
 
-            charts_rendered = 0
-            c1, c2 = st.columns(2)
+                    if not x_col or x_col not in df.columns:
+                        continue
+                    if y_col and y_col not in df.columns:
+                        continue
 
-            # Chart 1: Marks by Subject (bar) — most meaningful for marks CSV
-            subj_col = next((c for c in cat_cols if "subject" in c.lower()), cat_cols[0] if cat_cols else None)
-            marks_col = next((c for c in numeric_cols if "mark" in c.lower()), numeric_cols[0] if numeric_cols else None)
-            if subj_col and marks_col:
-                try:
-                    fig, ax = plt.subplots(figsize=(7, 4))
-                    plot_df = df[[subj_col, marks_col]].dropna().sort_values(marks_col, ascending=False)
-                    bars = ax.bar(plot_df[subj_col].astype(str), plot_df[marks_col], color=COLORS[0])
-                    ax.axhline(plot_df[marks_col].mean(), color="#f97316", linestyle="--", linewidth=1.5, label=f"Avg: {plot_df[marks_col].mean():.1f}")
-                    ax.legend(facecolor="#1a1f2e", labelcolor="#e2e8f0", fontsize=9)
-                    plt.xticks(rotation=45, ha="right", fontsize=8)
-                    _style(fig, ax, f"{marks_col} by {subj_col}", subj_col, marks_col)
-                    with c1: st.pyplot(fig)
-                    plt.close(fig)
-                    charts_rendered += 1
-                except Exception: plt.close("all")
+                    try:
+                        fig, ax = plt.subplots(figsize=(7, 4))
+                        fig.patch.set_facecolor("#0f1117")
+                        ax.set_facecolor("#1a1f2e")
+                        ax.tick_params(colors="#94a3b8")
+                        for sp in ax.spines.values(): sp.set_edgecolor("#2a3a5a")
 
-            # Chart 2: Average Marks per Semester (grouped bar)
-            sem_col = next((c for c in cat_cols if "sem" in c.lower()), None)
-            if not sem_col:
-                sem_col = next((c for c in numeric_cols if "sem" in c.lower()), None)
-            if sem_col and marks_col and sem_col != marks_col:
-                try:
-                    fig, ax = plt.subplots(figsize=(7, 4))
-                    avg_df = df.groupby(sem_col)[marks_col].mean().reset_index()
-                    ax.bar([f"Sem {int(s)}" for s in avg_df[sem_col]], avg_df[marks_col],
-                           color=COLORS[1], width=0.5)
-                    for bar, val in zip(ax.patches, avg_df[marks_col]):
-                        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
-                                f"{val:.1f}", ha="center", va="bottom", color="#e2e8f0", fontsize=9)
-                    _style(fig, ax, f"Average {marks_col} per Semester", "Semester", f"Avg {marks_col}")
-                    with c2: st.pyplot(fig)
-                    plt.close(fig)
-                    charts_rendered += 1
-                except Exception: plt.close("all")
+                        if ctype == "bar" and y_col:
+                            plot_df = df[[x_col, y_col]].dropna()
+                            ax.bar(plot_df[x_col].astype(str), plot_df[y_col], color=COLORS[i % len(COLORS)])
+                            plt.xticks(rotation=45, ha="right", fontsize=8)
+                        elif ctype == "line" and y_col:
+                            plot_df = df[[x_col, y_col]].dropna()
+                            ax.plot(plot_df[x_col].astype(str), plot_df[y_col],
+                                    marker="o", color=COLORS[i % len(COLORS)], linewidth=2)
+                            plt.xticks(rotation=45, ha="right", fontsize=8)
+                        elif ctype == "scatter" and y_col:
+                            ax.scatter(df[x_col], df[y_col], color=COLORS[i % len(COLORS)], alpha=0.7)
+                        elif ctype == "pie":
+                            pie_data = df.groupby(x_col)[y_col].sum() if y_col else df[x_col].value_counts()
+                            if 2 <= len(pie_data) <= 10:
+                                ax.pie(pie_data.values, labels=pie_data.index.astype(str),
+                                       autopct="%1.1f%%", colors=COLORS[:len(pie_data)],
+                                       textprops={"color": "#e2e8f0"})
+                                xlabel = ylabel = None  # pie has no axes
 
-            # Chart 3: Grade distribution (pie)
-            grade_col = next((c for c in cat_cols if "grade" in c.lower()), None)
-            if grade_col and len(df[grade_col].unique()) <= 10:
-                try:
-                    fig, ax = plt.subplots(figsize=(5, 5))
-                    fig.patch.set_facecolor("#0f1117")
-                    grade_counts = df[grade_col].value_counts()
-                    ax.pie(grade_counts.values, labels=grade_counts.index,
-                           autopct="%1.1f%%", colors=COLORS[:len(grade_counts)],
-                           textprops={"color": "#e2e8f0"})
-                    ax.set_title("Grade Distribution", color="#e2e8f0")
-                    plt.tight_layout()
-                    with (c1 if charts_rendered % 2 == 0 else c2): st.pyplot(fig)
-                    plt.close(fig)
-                    charts_rendered += 1
-                except Exception: plt.close("all")
-
-            # Chart 4: Marks trend across subjects (line) — only if not already shown
-            if charts_rendered < 2 and subj_col and marks_col:
-                try:
-                    fig, ax = plt.subplots(figsize=(7, 4))
-                    plot_df = df[[subj_col, marks_col]].dropna()
-                    ax.plot(range(len(plot_df)), plot_df[marks_col].values,
-                            marker="o", color=COLORS[2], linewidth=2)
-                    ax.set_xticks(range(len(plot_df)))
-                    ax.set_xticklabels(plot_df[subj_col].astype(str), rotation=45, ha="right", fontsize=7)
-                    _style(fig, ax, f"{marks_col} Trend Across Subjects", "Subject", marks_col)
-                    with c2: st.pyplot(fig)
-                    plt.close(fig)
-                except Exception: plt.close("all")
+                        ax.set_title(title, color="#e2e8f0", pad=10)
+                        if xlabel: ax.set_xlabel(xlabel, color="#94a3b8", fontsize=9)
+                        if ylabel: ax.set_ylabel(ylabel, color="#94a3b8", fontsize=9)
+                        plt.tight_layout()
+                        with cols[i % 2]: st.pyplot(fig)
+                        plt.close(fig)
+                    except Exception: plt.close("all")
 
     except Exception as e:
         st.error(f"Dashboard error: {e}")

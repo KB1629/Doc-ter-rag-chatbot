@@ -188,48 +188,105 @@ def generate_doc_summary(text: str) -> str:
 def generate_dashboard_analysis(doc_summaries: dict, csv_name: str, df: pd.DataFrame) -> tuple:
     """
     One LLM call: returns (pdf_summaries dict, csv_summary str, chart_plan list).
-    chart_plan: [{"title":..., "x":col, "y":col, "type":"bar"|"line"|"pie"|"scatter"}]
+    chart_plan: [{"title":..., "x":col, "y":col, "type":"bar"|"line"|"pie"|"scatter",
+                  "xlabel":..., "ylabel":...}]
     """
     try:
         import json, re
         llm = _get_llm()
         pdf_section = "\n".join(f"- {n}: {s[:400]}" for n, s in doc_summaries.items()) or "No PDFs."
-        csv_section = (
-            f"CSV '{csv_name}' columns: {list(df.columns)}, {len(df)} rows."
-            if df is not None else "No CSV."
-        )
-        numeric_cols = df.select_dtypes(include="number").columns.tolist() if df is not None else []
-        cat_cols = df.select_dtypes(exclude="number").columns.tolist() if df is not None else []
-        all_cols = list(df.columns) if df is not None else []
 
-        prompt = f"""Analyse these uploaded student files and return ONLY valid JSON.
+        if df is not None:
+            numeric_cols = df.select_dtypes(include="number").columns.tolist()
+            cat_cols = df.select_dtypes(exclude="number").columns.tolist()
+            # Pre-compute variance and unique counts so LLM can make informed decisions
+            col_stats = {
+                col: {
+                    "variance": round(float(df[col].var()), 2),
+                    "unique": int(df[col].nunique()),
+                    "sample_values": df[col].dropna().unique()[:5].tolist()
+                }
+                for col in df.columns
+            }
+            useful_numeric = [c for c in numeric_cols if df[c].var() > 1.0]
+            csv_info = (
+                f"CSV '{csv_name}': {len(df)} rows, columns: {list(df.columns)}\n"
+                f"Categorical columns: {cat_cols}\n"
+                f"Numeric columns with meaningful variance (var > 1): {useful_numeric}\n"
+                f"Column stats (variance, unique count, sample values): {json.dumps(col_stats, default=str)}"
+            )
+        else:
+            csv_info = "No CSV loaded."
+            useful_numeric, cat_cols = [], []
 
-PDFs: {pdf_section}
-{csv_section}
-Numeric columns: {numeric_cols}, Categorical columns: {cat_cols}
+        prompt = f"""You are a data visualisation expert analysing student career files.
 
-Return JSON:
+## Uploaded Files
+PDFs:
+{pdf_section}
+
+{csv_info}
+
+## Your Task
+Return ONLY a valid JSON object with these three keys:
+
+### 1. pdf_summaries
+For each PDF, write 3-4 sentences describing:
+- What type of document it is
+- Key content (skills listed, career goals, experience, projects, certifications etc.)
+- What a recruiter or student would find useful in it
+
+### 2. csv_summary
+1-2 sentences describing what the CSV contains and what insights it offers.
+
+### 3. charts
+Suggest exactly 2-3 chart objects. Each chart must:
+- Use ONLY column names from: {list(df.columns) if df is not None else []}
+- Use a column with meaningful variance as the Y axis (from: {useful_numeric})
+- NEVER use a column with near-zero variance (var < 1) as Y axis
+- Use different x+y combinations across charts — no repeated pairs
+- Choose the chart type that best fits the data relationship:
+  * bar — comparing values across categories
+  * line — showing trend or progression
+  * pie — showing proportion/distribution of a categorical column (max 10 unique values)
+  * scatter — showing correlation between two numeric columns
+- Include a clear human-readable "xlabel" and "ylabel" (not just column names — add units or context if helpful)
+- Include a descriptive "title" that explains what the chart shows
+
+## Output Format (ONLY valid JSON, no explanation):
 {{
-  "pdf_summaries": {{"filename.pdf": "3-4 line summary of what this file is and its key content"}},
-  "csv_summary": "1-2 line summary of the CSV data",
+  "pdf_summaries": {{"filename.pdf": "summary text"}},
+  "csv_summary": "summary text",
   "charts": [
-    {{"title": "...", "x": "col", "y": "col", "type": "bar|line|pie|scatter"}}
+    {{
+      "title": "Marks Scored per Subject",
+      "type": "bar",
+      "x": "Subject",
+      "y": "Marks",
+      "xlabel": "Subject Name",
+      "ylabel": "Marks Scored (out of 100)"
+    }}
   ]
-}}
-Rules:
-- pdf_summaries: one entry per PDF, 3-4 lines describing the file content (skills, goals, experience etc.)
-- charts: 2-3 DISTINCT charts using DIFFERENT column combinations from {all_cols}
-- Only use columns that exist in the list above
-- Do not repeat the same x+y pair across charts"""
+}}"""
 
         raw = llm.invoke([HumanMessage(content=prompt)]).content.strip()
         match = re.search(r'\{.*\}', raw, re.DOTALL)
         if match:
             data = json.loads(match.group())
+            charts = data.get("charts", [])
+            # Safety: filter out charts using low-variance Y columns
+            if df is not None:
+                charts = [
+                    c for c in charts
+                    if c.get("y") in df.columns
+                    and c.get("x") in df.columns
+                    and (c.get("y") not in df.select_dtypes(include="number").columns
+                         or df[c["y"]].var() > 1.0)
+                ]
             return (
                 data.get("pdf_summaries", {}),
                 data.get("csv_summary", ""),
-                data.get("charts", [])
+                charts
             )
     except Exception:
         pass
