@@ -22,7 +22,6 @@ def _get_llm():
         return _llm
     except Exception as e:
         raise RuntimeError(f"Failed to initialise LLM: {e}")
-    return _llm
 
 
 def load_csv(uploaded_file) -> pd.DataFrame:
@@ -255,16 +254,6 @@ def generate_chart(result_df: pd.DataFrame, query: str, chart_spec: dict = None)
 
     except Exception as e:
         raise RuntimeError(f"Chart generation failed: {e}")
-
-
-def generate_doc_summary(text: str) -> str:
-    """Generate a 3-sentence summary of a document's text via LLM."""
-    try:
-        llm = _get_llm()
-        prompt = f"Summarise the following document in exactly 3 concise sentences:\n\n{text[:3000]}"
-        return llm.invoke([HumanMessage(content=prompt)]).content
-    except Exception:
-        return "Summary unavailable."
 
 
 def generate_dashboard_analysis(pdf_texts: dict, csv_name: str, df: pd.DataFrame) -> tuple:

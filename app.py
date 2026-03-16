@@ -126,9 +126,9 @@ def render_sidebar():
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("🗑️ Clear", use_container_width=True):
-                    for k in ["messages","processed_files","doc_summaries","pdf_texts","csv_dataframes",
+                    for k in ["messages","processed_files","pdf_texts","csv_dataframes",
                               "csv_bytes","dashboard_analysed","dash_pdf_sums","dash_csv_sum","dash_chart_plan"]:
-                        st.session_state[k] = [] if k == "messages" else ({} if k in ["doc_summaries","pdf_texts","csv_dataframes","csv_bytes","dash_pdf_sums"] else (set() if k == "processed_files" else (False if k == "dashboard_analysed" else "")))
+                        st.session_state[k] = [] if k == "messages" else ({} if k in ["pdf_texts","csv_dataframes","csv_bytes","dash_pdf_sums"] else (set() if k == "processed_files" else (False if k == "dashboard_analysed" else "")))
                     clear_collection()
                     import os, glob
                     for f in glob.glob("chroma_db/csv_*"):
@@ -218,61 +218,17 @@ def render_dashboard(combined_csv):
             st.dataframe(df, use_container_width=True, height=300)
 
             chart_plan = st.session_state.get("dash_chart_plan", [])
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
-            COLORS = ["#38bdf8","#4ade80","#f97316","#c084fc","#fb923c","#facc15"]
-
             if not chart_plan:
                 st.info("No charts generated.")
             else:
                 cols = st.columns(2)
                 for i, chart in enumerate(chart_plan[:4]):
-                    x_col = chart.get("x")
-                    y_col = chart.get("y")
-                    ctype = chart.get("type", "bar")
-                    title = chart.get("title", f"Chart {i+1}")
-                    xlabel = chart.get("xlabel", x_col)
-                    ylabel = chart.get("ylabel", y_col)
-
-                    if not x_col or x_col not in df.columns:
-                        continue
-                    if y_col and y_col not in df.columns:
-                        continue
-
                     try:
-                        fig, ax = plt.subplots(figsize=(7, 4))
-                        fig.patch.set_facecolor("#0f1117")
-                        ax.set_facecolor("#1a1f2e")
-                        ax.tick_params(colors="#94a3b8")
-                        for sp in ax.spines.values(): sp.set_edgecolor("#2a3a5a")
-
-                        if ctype == "bar" and y_col:
-                            plot_df = df[[x_col, y_col]].dropna()
-                            ax.bar(plot_df[x_col].astype(str), plot_df[y_col], color=COLORS[i % len(COLORS)])
-                            plt.xticks(rotation=45, ha="right", fontsize=8)
-                        elif ctype == "line" and y_col:
-                            plot_df = df[[x_col, y_col]].dropna()
-                            ax.plot(plot_df[x_col].astype(str), plot_df[y_col],
-                                    marker="o", color=COLORS[i % len(COLORS)], linewidth=2)
-                            plt.xticks(rotation=45, ha="right", fontsize=8)
-                        elif ctype == "scatter" and y_col:
-                            ax.scatter(df[x_col], df[y_col], color=COLORS[i % len(COLORS)], alpha=0.7)
-                        elif ctype == "pie":
-                            pie_data = df.groupby(x_col)[y_col].sum() if y_col else df[x_col].value_counts()
-                            if 2 <= len(pie_data) <= 10:
-                                ax.pie(pie_data.values, labels=pie_data.index.astype(str),
-                                       autopct="%1.1f%%", colors=COLORS[:len(pie_data)],
-                                       textprops={"color": "#e2e8f0"})
-                                xlabel = ylabel = None  # pie has no axes
-
-                        ax.set_title(title, color="#e2e8f0", pad=10)
-                        if xlabel: ax.set_xlabel(xlabel, color="#94a3b8", fontsize=9)
-                        if ylabel: ax.set_ylabel(ylabel, color="#94a3b8", fontsize=9)
-                        plt.tight_layout()
-                        with cols[i % 2]: st.pyplot(fig)
-                        plt.close(fig)
-                    except Exception: plt.close("all")
+                        chart_bytes = generate_chart(df, "", chart)
+                        with cols[i % 2]:
+                            st.image(chart_bytes, use_container_width=True)
+                    except Exception:
+                        pass
 
     except Exception as e:
         st.error(f"Dashboard error: {e}")
@@ -323,7 +279,6 @@ def main():
     for key, default in [
         ("messages", []),
         ("processed_files", set()),
-        ("doc_summaries", {}),
         ("pdf_texts", {}),
         ("csv_dataframes", {}),
         ("csv_bytes", {}),
