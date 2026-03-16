@@ -3,7 +3,6 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import pymupdf4llm
-import pymupdf
 import tempfile
 from config.config import CHUNK_SIZE, CHUNK_OVERLAP
 
@@ -31,20 +30,20 @@ def parse_pdf(uploaded_file, source_name: str = None) -> list[dict]:
             tmp.write(data)
             tmp_path = tmp.name
 
-        pages = pymupdf4llm.to_markdown(tmp_path, page_chunks=True)
-        chunks = []
-        for page in pages:
-            text = page["text"].strip()
-            page_num = page["metadata"]["page_number"]
-            if not text:
-                # Scanned/image page — fall back to OCR
-                text = _ocr_page(tmp_path, page_num).strip()
-            if not text:
-                continue
-            for chunk in _split_text(text, name, page_num):
-                chunks.append(chunk)
-
-        os.unlink(tmp_path)
+        try:
+            pages = pymupdf4llm.to_markdown(tmp_path, page_chunks=True)
+            chunks = []
+            for page in pages:
+                text = page["text"].strip()
+                page_num = page["metadata"]["page_number"]
+                if not text:
+                    text = _ocr_page(tmp_path, page_num).strip()
+                if not text:
+                    continue
+                for chunk in _split_text(text, name, page_num):
+                    chunks.append(chunk)
+        finally:
+            os.unlink(tmp_path)
 
         if not chunks:
             raise RuntimeError(

@@ -139,7 +139,6 @@ def ask(query: str, history: list[dict], mode: str, has_docs: bool,
         # SQL path
         if "sql" in route and has_csv:
             sql_result = query_csv(query, csv_df, mode)
-            csv_schema = _get_schema(csv_df)
 
         # RAG path
         if "rag" in route and has_docs:
@@ -162,7 +161,18 @@ def ask(query: str, history: list[dict], mode: str, has_docs: bool,
             active.append("docs")
         if web_results:
             active.append("web")
-        source = "+".join(active) if active else "llm"
+
+        # Map active sources to badge key
+        if set(active) == {"sql", "docs", "web"}:
+            source = "all"
+        elif set(active) == {"docs", "web"}:
+            source = "both"
+        elif len(active) == 1:
+            source = active[0]
+        elif active:
+            source = "+".join(active)
+        else:
+            source = "llm"
 
         # If SQL handled it fully, return directly
         if route == "sql" and sql_result:

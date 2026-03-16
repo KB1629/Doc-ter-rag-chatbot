@@ -61,8 +61,8 @@ def search(query: str) -> list[dict]:
 def clear_collection():
     """Delete all stored chunks (used when user clears chat/docs)."""
     try:
-        global _collection
-        collection = _get_collection()
+        global _collection, _client
+        _get_collection()  # ensures _client is initialised
         _client.delete_collection("documents")
         _collection = _client.get_or_create_collection("documents")
     except Exception as e:
