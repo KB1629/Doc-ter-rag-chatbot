@@ -177,6 +177,7 @@ def ask(query: str, history: list[dict], mode: str, has_docs: bool,
         # Build combined prompt for mixed sources
         doc_context = _format_doc_context(doc_chunks)
         web_context = _format_web_context(web_results)
+        sql_answer = sql_result["answer"] if sql_result and sql_result.get("answer") else ""
         sql_context = _get_schema(csv_df) if has_csv and "sql" in route else ""
         system_prompt = _build_system_prompt(mode, doc_context, web_context, sql_context)
 
@@ -186,7 +187,12 @@ def ask(query: str, history: list[dict], mode: str, has_docs: bool,
                 messages.append(HumanMessage(content=msg["content"]))
             else:
                 messages.append(AIMessage(content=msg["content"]))
-        messages.append(HumanMessage(content=query))
+
+        # Inject SQL findings into the question so LLM can combine with other sources
+        combined_query = query
+        if sql_answer:
+            combined_query = f"{query}\n\n[Data Analysis Result: {sql_answer}]"
+        messages.append(HumanMessage(content=combined_query))
 
         response = _get_llm().invoke(messages)
 

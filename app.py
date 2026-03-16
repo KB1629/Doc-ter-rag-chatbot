@@ -234,7 +234,7 @@ def render_dashboard(combined_csv):
         st.error(f"Dashboard error: {e}")
 
 
-def render_sql_result(sql_result: dict):
+def render_sql_result(sql_result: dict, msg_id: int = 0):
     """Render SQL query, result table, and visualize button below an assistant message."""
     if not sql_result or not sql_result.get("sql"):
         return
@@ -244,7 +244,7 @@ def render_sql_result(sql_result: dict):
     if result_df is not None and not result_df.empty:
         st.dataframe(result_df, use_container_width=True)
     if sql_result.get("can_visualize") and result_df is not None:
-        if st.button("📊 Visualize", key=f"chart_{id(sql_result)}"):
+        if st.button("📊 Visualize", key=f"chart_{msg_id}"):
             with st.spinner("Generating chart..."):
                 try:
                     chart_bytes = generate_chart(
@@ -265,7 +265,7 @@ def render_message(msg: dict):
         st.markdown(msg["content"])
         if msg["role"] == "assistant":
             if msg.get("sql_result"):
-                render_sql_result(msg["sql_result"])
+                render_sql_result(msg["sql_result"], msg.get("id", 0))
             if st.button("🔊 Listen", key=f"tts_{msg['id']}"):
                 with st.spinner("Playing..."):
                     try:
@@ -455,7 +455,7 @@ def main():
                 st.markdown(result["answer"])
 
                 if result.get("sql_result"):
-                    render_sql_result(result["sql_result"])
+                    render_sql_result(result["sql_result"], st.session_state.msg_counter)
 
                 st.session_state.msg_counter += 1
                 ai_msg = {

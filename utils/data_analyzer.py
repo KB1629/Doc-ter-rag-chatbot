@@ -115,14 +115,14 @@ Return ONLY a valid JSON object with two keys: "sql" and "chart".
         # Strip markdown code fences if present
         raw = re.sub(r"```(?:json)?", "", raw).replace("```", "").strip()
         match = re.search(r'\{.*\}', raw, re.DOTALL)
-        if match:
-            data = json.loads(match.group())
-            sql = data.get("sql", "").strip()
-            chart = data.get("chart")
-            return sql, chart
-    except Exception:
-        pass
-    return "", None
+        if not match:
+            raise ValueError(f"LLM returned no JSON: {raw[:100]}")
+        data = json.loads(match.group())
+        sql = data.get("sql", "").strip()
+        chart = data.get("chart")
+        return sql, chart
+    except Exception as e:
+        raise RuntimeError(f"SQL/chart generation failed: {e}")
 
 
 def _explain_result(query: str, sql: str, result_df: pd.DataFrame, mode: str) -> str:
@@ -165,7 +165,10 @@ def query_csv(query: str, df: pd.DataFrame, mode: str) -> dict:
         conn.close()
         result_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-        answer = _explain_result(query, sql, result_df, mode)
+        if result_df.empty:
+            answer = "The query returned no results. Try rephrasing your question."
+        else:
+            answer = _explain_result(query, sql, result_df, mode)
         numeric_cols = result_df.select_dtypes(include="number").columns
         can_visualize = len(numeric_cols) >= 1 and len(result_df) >= 2
 
