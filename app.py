@@ -297,7 +297,11 @@ def render_sql_result(sql_result: dict):
         if st.button("📊 Visualize", key=f"chart_{id(sql_result)}"):
             with st.spinner("Generating chart..."):
                 try:
-                    chart_bytes = generate_chart(result_df, sql_result.get("sql", ""))
+                    chart_bytes = generate_chart(
+                        result_df,
+                        sql_result.get("sql", ""),
+                        sql_result.get("chart_spec")
+                    )
                     st.image(chart_bytes, use_container_width=True)
                 except Exception as e:
                     st.error(f"Chart error: {e}")
