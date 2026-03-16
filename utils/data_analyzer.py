@@ -138,31 +138,44 @@ def query_csv(query: str, df: pd.DataFrame, mode: str) -> dict:
 
 
 def generate_chart(result_df: pd.DataFrame, query: str) -> bytes:
-    """
-    Generate a matplotlib chart from a SQL result DataFrame.
-    Returns PNG bytes.
-    """
+    """Generate a meaningful chart from a SQL result DataFrame. Returns PNG bytes."""
     try:
         numeric_cols = result_df.select_dtypes(include="number").columns.tolist()
         text_cols = result_df.select_dtypes(exclude="number").columns.tolist()
 
+        # Filter out near-constant numeric columns (variance < 1)
+        useful_numeric = [c for c in numeric_cols if result_df[c].var() > 1.0] or numeric_cols
+
         fig, ax = plt.subplots(figsize=(8, 4))
+        fig.patch.set_facecolor("#0f1117")
+        ax.set_facecolor("#1a1f2e")
+        ax.tick_params(colors="#94a3b8")
+        for sp in ax.spines.values(): sp.set_edgecolor("#2a3a5a")
 
-        if text_cols and numeric_cols:
-            x = result_df[text_cols[0]].astype(str)
-            y = result_df[numeric_cols[0]]
-            ax.bar(x, y, color="#4ade80")
-            ax.set_xlabel(text_cols[0])
-            ax.set_ylabel(numeric_cols[0])
-        elif len(numeric_cols) >= 2:
-            ax.plot(result_df[numeric_cols[0]], result_df[numeric_cols[1]], marker="o", color="#60a5fa")
-            ax.set_xlabel(numeric_cols[0])
-            ax.set_ylabel(numeric_cols[1])
+        if text_cols and useful_numeric:
+            x_col, y_col = text_cols[0], useful_numeric[0]
+            x = result_df[x_col].astype(str)
+            y = result_df[y_col]
+            # Use line if many points, bar if few
+            if len(result_df) > 10:
+                ax.plot(range(len(x)), y.values, marker="o", color="#38bdf8", linewidth=2)
+                ax.set_xticks(range(len(x)))
+                ax.set_xticklabels(x, rotation=45, ha="right", fontsize=8)
+            else:
+                ax.bar(x, y, color="#4ade80")
+                plt.xticks(rotation=45, ha="right", fontsize=9)
+            ax.set_xlabel(x_col, color="#94a3b8", fontsize=9)
+            ax.set_ylabel(y_col, color="#94a3b8", fontsize=9)
+        elif len(useful_numeric) >= 2:
+            ax.scatter(result_df[useful_numeric[0]], result_df[useful_numeric[1]],
+                       color="#f97316", alpha=0.7)
+            ax.set_xlabel(useful_numeric[0], color="#94a3b8", fontsize=9)
+            ax.set_ylabel(useful_numeric[1], color="#94a3b8", fontsize=9)
         else:
-            result_df[numeric_cols[0]].plot(ax=ax, color="#c084fc")
-            ax.set_ylabel(numeric_cols[0])
+            result_df[useful_numeric[0]].plot(ax=ax, color="#c084fc")
+            ax.set_ylabel(useful_numeric[0], color="#94a3b8", fontsize=9)
 
-        ax.set_title(query[:60])
+        ax.set_title(query[:70], color="#e2e8f0", pad=10)
         plt.tight_layout()
 
         buf = io.BytesIO()
