@@ -25,6 +25,12 @@ def parse_pdf(uploaded_file, source_name: str = None) -> list[dict]:
                 continue
             for chunk in _split_text(text, name, page_num):
                 chunks.append(chunk)
+        if not chunks:
+            raise RuntimeError(
+                f"No text could be extracted from '{name}'. "
+                "This appears to be a scanned/image-based PDF. "
+                "Please upload a text-based PDF instead."
+            )
         return chunks
     except Exception as e:
         raise RuntimeError(f"Failed to parse PDF: {e}")
