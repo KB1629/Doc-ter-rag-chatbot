@@ -6,6 +6,16 @@
 
 ---
 
+## 💭 What I Built and Why
+
+Most students approaching graduation have three things: a mark sheet, a resume, and a vague career goal — but no clear way to connect them. They manually Google job requirements, guess where their gaps are, and get generic advice that doesn't account for their actual data.
+
+I built **Analyser Bot** to solve exactly that. Instead of a generic chatbot, I designed a multi-source intelligence system that treats a student's personal data as first-class context. The bot automatically decides whether a question needs SQL on the marks CSV, semantic search over the resume PDF, a live web search for job requirements — or all three combined — and answers with cited, chart-backed responses.
+
+The key design decision was **LLM-driven routing**: rather than hardcoding "if CSV uploaded, run SQL", the LLM reads the question and available sources and picks the right combination. This makes the system genuinely flexible — the same architecture works for any domain where structured data, documents, and live information need to be combined.
+
+---
+
 ## 🚀 How to Use (Quick Start)
 
 Sample test files are included in the `tests/` folder — no need to prepare anything.
