@@ -80,7 +80,7 @@ Return ONLY a valid JSON object with two keys: "sql" and "chart".
 - A single valid SQLite SELECT statement that answers the question
 - Use ONLY the exact table name "data" and column names from the schema above
 - If the question needs top/bottom N results, use ORDER BY + LIMIT
-- If the question needs aggregation (average, count, sum), use GROUP BY
+- If the question needs aggregation (average, count, sum), use GROUP BY with an alias (e.g. AVG(Marks) AS avg_marks)
 - Do NOT use markdown, backticks, or any explanation — just the raw SQL string
 
 ### chart
@@ -91,8 +91,8 @@ Return ONLY a valid JSON object with two keys: "sql" and "chart".
     * "line" — if showing a trend or progression over ordered categories
     * "scatter" — if showing correlation between two numeric columns
     * "barh" — if category labels are long (>10 chars average) or there are many categories
-  - x: the column name to use as X axis (or category labels for pie)
-  - y: the column name to use as Y axis (or values for pie) — must have meaningful variance
+  - x: the column name AS IT WILL APPEAR IN THE RESULT (use alias if aggregated, e.g. "avg_marks")
+  - y: the column name AS IT WILL APPEAR IN THE RESULT (use alias if aggregated, e.g. "avg_marks")
   - xlabel: human-readable X axis label with context (e.g. "Subject Name", "Semester Number")
   - ylabel: human-readable Y axis label with units if applicable (e.g. "Marks Scored (out of 100)")
   - title: a clear descriptive chart title (e.g. "Average Marks per Semester")
@@ -169,10 +169,19 @@ def query_csv(query: str, df: pd.DataFrame, mode: str) -> dict:
         numeric_cols = result_df.select_dtypes(include="number").columns
         can_visualize = len(numeric_cols) >= 1 and len(result_df) >= 2
 
-        # Validate chart_spec columns exist in result
+        # Validate chart_spec columns exist in result — fix aliases (e.g. AVG(Marks) → avg_marks)
         if chart_spec and isinstance(chart_spec, dict):
             x, y = chart_spec.get("x"), chart_spec.get("y")
-            if x not in result_df.columns or (y and y not in result_df.columns):
+            result_numeric = result_df.select_dtypes(include="number").columns.tolist()
+            result_text = result_df.select_dtypes(exclude="number").columns.tolist()
+            # Fix x: if not in result, use first text column
+            if x not in result_df.columns:
+                chart_spec["x"] = result_text[0] if result_text else (result_df.columns[0] if len(result_df.columns) else None)
+            # Fix y: if not in result, use first numeric column
+            if y not in result_df.columns:
+                chart_spec["y"] = result_numeric[0] if result_numeric else None
+            # If still no valid x or y, discard spec
+            if not chart_spec.get("x") or not chart_spec.get("y"):
                 chart_spec = None
 
         return {
