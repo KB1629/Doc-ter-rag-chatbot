@@ -154,9 +154,9 @@ def ask(query: str, history: list[dict], mode: str, has_docs: bool,
         if route == "llm" or (not doc_chunks and not web_results and not sql_result):
             route = "llm"
 
-        # Determine source badge
+        # Determine source badge — only mark sql active if answer is meaningful
         active = []
-        if sql_result and sql_result.get("answer"):
+        if sql_result and sql_result.get("answer") and not sql_result["answer"].startswith("Data query failed"):
             active.append("sql")
         if doc_chunks:
             active.append("docs")

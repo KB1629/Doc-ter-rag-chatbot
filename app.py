@@ -451,12 +451,8 @@ def main():
                         csv_df=combined_csv,
                     )
                 source = result["source"]
-                st.markdown(BADGE.get(source, BADGE["llm"]), unsafe_allow_html=True)
-                st.markdown(result["answer"])
 
-                if result.get("sql_result"):
-                    render_sql_result(result["sql_result"], st.session_state.msg_counter)
-
+                # Save message first so id is stable across reruns
                 st.session_state.msg_counter += 1
                 ai_msg = {
                     "role": "assistant",
@@ -466,6 +462,11 @@ def main():
                     "sql_result": result.get("sql_result"),
                 }
                 st.session_state.messages.append(ai_msg)
+
+                st.markdown(BADGE.get(source, BADGE["llm"]), unsafe_allow_html=True)
+                st.markdown(result["answer"])
+                if result.get("sql_result"):
+                    render_sql_result(result["sql_result"], ai_msg["id"])
                 st.rerun()
 
 
