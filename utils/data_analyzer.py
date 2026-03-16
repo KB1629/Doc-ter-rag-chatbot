@@ -194,58 +194,53 @@ def query_csv(query: str, df: pd.DataFrame, mode: str) -> dict:
 
 
 def generate_chart(result_df: pd.DataFrame, query: str, chart_spec: dict = None) -> bytes:
-    """Generate a chart from SQL result. Uses chart_spec from LLM if provided."""
+    """Generate a chart from SQL result using chart_spec from LLM."""
     try:
-        COLORS = ["#38bdf8","#4ade80","#f97316","#c084fc","#fb923c","#facc15"]
+        if not chart_spec or not isinstance(chart_spec, dict):
+            raise ValueError("No chart spec provided.")
+
+        ctype = chart_spec.get("type", "bar")
+        x_col = chart_spec.get("x")
+        y_col = chart_spec.get("y")
+        xlabel = chart_spec.get("xlabel", x_col)
+        ylabel = chart_spec.get("ylabel", y_col)
+        title = chart_spec.get("title", query[:60])
+
+        if not x_col or not y_col or x_col not in result_df.columns or y_col not in result_df.columns:
+            raise ValueError(f"Columns '{x_col}' or '{y_col}' not found in data.")
+
+        # Aggregate if x has repeated values (e.g. multiple subjects per semester)
+        if result_df[x_col].duplicated().any():
+            plot_df = result_df.groupby(x_col, sort=False)[y_col].mean().reset_index()
+        else:
+            plot_df = result_df[[x_col, y_col]].copy()
+
+        COLORS = ["#38bdf8", "#4ade80", "#f97316", "#c084fc", "#fb923c", "#facc15"]
         fig, ax = plt.subplots(figsize=(8, 4))
         fig.patch.set_facecolor("#0f1117")
         ax.set_facecolor("#1a1f2e")
         ax.tick_params(colors="#94a3b8")
         for sp in ax.spines.values(): sp.set_edgecolor("#2a3a5a")
 
-        numeric_cols = result_df.select_dtypes(include="number").columns.tolist()
-        text_cols = result_df.select_dtypes(exclude="number").columns.tolist()
-        useful_numeric = [c for c in numeric_cols if result_df[c].var() > 1.0] or numeric_cols
-
-        # Use LLM chart spec if valid
-        if chart_spec and isinstance(chart_spec, dict):
-            ctype = chart_spec.get("type", "bar")
-            x_col = chart_spec.get("x")
-            y_col = chart_spec.get("y")
-            xlabel = chart_spec.get("xlabel", x_col)
-            ylabel = chart_spec.get("ylabel", y_col)
-            title = chart_spec.get("title", query[:60])
-        else:
-            # Fallback: infer from result shape
-            ctype = "bar"
-            x_col = text_cols[0] if text_cols else None
-            y_col = useful_numeric[0] if useful_numeric else None
-            xlabel, ylabel = x_col, y_col
-            title = query[:60]
-            if len(result_df) > 10: ctype = "line"
-            if not text_cols and len(useful_numeric) >= 2: ctype = "scatter"
-
-        if ctype == "pie" and x_col and y_col:
-            pie_data = result_df.set_index(x_col)[y_col]
-            ax.pie(pie_data.values, labels=pie_data.index.astype(str),
-                   autopct="%1.1f%%", colors=COLORS[:len(pie_data)],
+        if ctype == "pie":
+            ax.pie(plot_df[y_col].values, labels=plot_df[x_col].astype(str),
+                   autopct="%1.1f%%", colors=COLORS[:len(plot_df)],
                    textprops={"color": "#e2e8f0"})
             xlabel = ylabel = None
-        elif ctype == "barh" and x_col and y_col:
-            ax.barh(result_df[x_col].astype(str), result_df[y_col], color=COLORS[0])
+        elif ctype == "barh":
+            ax.barh(plot_df[x_col].astype(str), plot_df[y_col], color=COLORS[0])
             ax.set_xlabel(ylabel, color="#94a3b8", fontsize=9)
             ax.set_ylabel(xlabel, color="#94a3b8", fontsize=9)
             xlabel = ylabel = None
-        elif ctype == "scatter" and x_col and y_col:
-            ax.scatter(result_df[x_col], result_df[y_col], color=COLORS[2], alpha=0.7)
-        elif ctype == "line" and x_col and y_col:
-            ax.plot(result_df[x_col].astype(str), result_df[y_col],
+        elif ctype == "scatter":
+            ax.scatter(plot_df[x_col], plot_df[y_col], color=COLORS[2], alpha=0.7)
+        elif ctype == "line":
+            ax.plot(plot_df[x_col].astype(str), plot_df[y_col],
                     marker="o", color=COLORS[1], linewidth=2)
             plt.xticks(rotation=45, ha="right", fontsize=8)
-        else:  # bar default
-            if x_col and y_col:
-                ax.bar(result_df[x_col].astype(str), result_df[y_col], color=COLORS[0])
-                plt.xticks(rotation=45, ha="right", fontsize=9)
+        else:  # bar
+            ax.bar(plot_df[x_col].astype(str), plot_df[y_col], color=COLORS[0])
+            plt.xticks(rotation=45, ha="right", fontsize=9)
 
         ax.set_title(title, color="#e2e8f0", pad=10)
         if xlabel: ax.set_xlabel(xlabel, color="#94a3b8", fontsize=9)
