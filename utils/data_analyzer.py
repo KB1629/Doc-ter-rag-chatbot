@@ -275,37 +275,41 @@ def generate_doc_summary(text: str) -> str:
 def generate_dashboard_analysis(doc_summaries: dict, csv_name: str, df: pd.DataFrame) -> tuple:
     """
     One LLM call: returns (pdf_summaries dict, csv_summary str, chart_plan list).
-    chart_plan: [{"title":..., "x":col, "y":col, "type":"bar"|"line"|"pie"|"scatter",
-                  "xlabel":..., "ylabel":...}]
+    If doc_summaries is empty, retrieves text from ChromaDB and generates summaries first.
     """
     try:
         import json, re
+        from utils.vector_store import get_stored_sources, _get_collection
+        from models.embeddings import embed_texts
+
+        # If no summaries cached, build them from ChromaDB per source
+        if not doc_summaries:
+            collection = _get_collection()
+            for src in get_stored_sources():
+                try:
+                    results = collection.query(
+                        query_embeddings=[embed_texts([src])[0]],
+                        n_results=min(6, collection.count()),
+                        where={"source": src},
+                        include=["documents"]
+                    )
+                    text = " ".join(results["documents"][0])[:2000]
+                    if text.strip():
+                        doc_summaries[src] = generate_doc_summary(text)
+                except Exception:
+                    pass
+
         llm = _get_llm()
         pdf_section = "\n".join(f"- {n}: {s[:400]}" for n, s in doc_summaries.items()) or "No PDFs."
 
         if df is not None:
             numeric_cols = df.select_dtypes(include="number").columns.tolist()
             cat_cols = df.select_dtypes(exclude="number").columns.tolist()
-            # Pre-compute variance and unique counts so LLM can make informed decisions
-            col_stats = {}
-            for col in df.columns:
-                if col in numeric_cols:
-                    col_stats[col] = {
-                        "variance": round(float(df[col].var()), 2),
-                        "unique": int(df[col].nunique()),
-                        "sample_values": df[col].dropna().unique()[:5].tolist()
-                    }
-                else:
-                    col_stats[col] = {
-                        "unique": int(df[col].nunique()),
-                        "sample_values": df[col].dropna().unique()[:5].tolist()
-                    }
             useful_numeric = [c for c in numeric_cols if df[c].var() > 1.0]
             csv_info = (
                 f"CSV '{csv_name}': {len(df)} rows, columns: {list(df.columns)}\n"
                 f"Categorical columns: {cat_cols}\n"
-                f"Numeric columns with meaningful variance (var > 1): {useful_numeric}\n"
-                f"Column stats (variance, unique count, sample values): {json.dumps(col_stats, default=str)}"
+                f"Numeric columns with meaningful variance: {useful_numeric}"
             )
         else:
             csv_info = "No CSV loaded."
@@ -313,42 +317,15 @@ def generate_dashboard_analysis(doc_summaries: dict, csv_name: str, df: pd.DataF
 
         prompt = f"""You are a data visualisation expert analysing student career files.
 
-## Uploaded Files
 PDFs:
 {pdf_section}
 
 {csv_info}
 
-## Your Task
-Return ONLY a valid JSON object with these three keys:
-
-### 1. pdf_summaries
-For each PDF, write 3-4 sentences describing:
-- What type of document it is
-- Key content (skills listed, career goals, experience, projects, certifications etc.)
-- What a recruiter or student would find useful in it
-
-### 2. csv_summary
-1-2 sentences describing what the CSV contains and what insights it offers.
-
-### 3. charts
-Suggest exactly 2-3 chart objects. Each chart must:
-- Use ONLY column names from: {list(df.columns) if df is not None else []}
-- Use a column with meaningful variance as the Y axis (from: {useful_numeric})
-- NEVER use a column with near-zero variance (var < 1) as Y axis
-- Use different x+y combinations across charts — no repeated pairs
-- Choose the chart type that best fits the data relationship:
-  * bar — comparing values across categories
-  * line — showing trend or progression
-  * pie — showing proportion/distribution of a categorical column (max 10 unique values)
-  * scatter — showing correlation between two numeric columns
-- Include a clear human-readable "xlabel" and "ylabel" (not just column names — add units or context if helpful)
-- Include a descriptive "title" that explains what the chart shows
-
-## Output Format (ONLY valid JSON, no explanation):
+Return ONLY a valid JSON object (no markdown fences):
 {{
-  "pdf_summaries": {{"filename.pdf": "summary text"}},
-  "csv_summary": "summary text",
+  "pdf_summaries": {{"filename.pdf": "3-4 sentence summary of the document"}},
+  "csv_summary": "1-2 sentence description of the CSV data",
   "charts": [
     {{
       "title": "Marks Scored per Subject",
@@ -359,27 +336,27 @@ Suggest exactly 2-3 chart objects. Each chart must:
       "ylabel": "Marks Scored (out of 100)"
     }}
   ]
-}}"""
+}}
+
+Rules for charts:
+- Use ONLY column names from: {list(df.columns) if df is not None else []}
+- Y axis must be from meaningful numeric columns: {useful_numeric}
+- Suggest 2-3 charts with different x+y pairs
+- Types: bar (compare categories), line (trend), pie (proportions, max 10 unique), scatter (correlation)"""
 
         raw = llm.invoke([HumanMessage(content=prompt)]).content.strip()
         match = re.search(r'\{.*\}', raw, re.DOTALL)
-        if match:
-            data = json.loads(match.group())
-            charts = data.get("charts", [])
-            # Safety: filter out charts using low-variance Y columns
-            if df is not None:
-                charts = [
-                    c for c in charts
-                    if c.get("y") in df.columns
-                    and c.get("x") in df.columns
-                    and (c.get("y") not in df.select_dtypes(include="number").columns
-                         or df[c["y"]].var() > 1.0)
-                ]
-            return (
-                data.get("pdf_summaries", {}),
-                data.get("csv_summary", ""),
-                charts
-            )
-    except Exception:
-        pass
-    return {}, "", []
+        if not match:
+            raise ValueError(f"LLM returned no JSON. Response: {raw[:200]}")
+        data = json.loads(match.group())
+        charts = data.get("charts", [])
+        if df is not None:
+            charts = [
+                c for c in charts
+                if c.get("y") in df.columns and c.get("x") in df.columns
+                and (c.get("y") not in df.select_dtypes(include="number").columns
+                     or df[c["y"]].var() > 1.0)
+            ]
+        return (data.get("pdf_summaries", {}), data.get("csv_summary", ""), charts)
+    except Exception as e:
+        raise RuntimeError(f"Dashboard analysis failed: {e}")

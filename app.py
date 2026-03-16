@@ -189,13 +189,16 @@ def render_dashboard(combined_csv):
 
         if st.button("🔍 Analyse All", type="primary"):
             with st.spinner("Analysing files..."):
-                pdf_sums, csv_sum, chart_plan = generate_dashboard_analysis(
-                    st.session_state.doc_summaries, csv_name, df
-                )
-                st.session_state["dash_pdf_sums"] = pdf_sums
-                st.session_state["dash_csv_sum"] = csv_sum
-                st.session_state["dash_chart_plan"] = chart_plan
-                st.session_state["dashboard_analysed"] = True
+                try:
+                    pdf_sums, csv_sum, chart_plan = generate_dashboard_analysis(
+                        st.session_state.doc_summaries, csv_name, df
+                    )
+                    st.session_state["dash_pdf_sums"] = pdf_sums
+                    st.session_state["dash_csv_sum"] = csv_sum
+                    st.session_state["dash_chart_plan"] = chart_plan
+                    st.session_state["dashboard_analysed"] = True
+                except Exception as e:
+                    st.error(f"Analysis failed: {e}")
 
         if not st.session_state.get("dashboard_analysed"):
             return
