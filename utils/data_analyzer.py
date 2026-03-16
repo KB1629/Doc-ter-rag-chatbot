@@ -287,14 +287,19 @@ def generate_dashboard_analysis(doc_summaries: dict, csv_name: str, df: pd.DataF
             numeric_cols = df.select_dtypes(include="number").columns.tolist()
             cat_cols = df.select_dtypes(exclude="number").columns.tolist()
             # Pre-compute variance and unique counts so LLM can make informed decisions
-            col_stats = {
-                col: {
-                    "variance": round(float(df[col].var()), 2),
-                    "unique": int(df[col].nunique()),
-                    "sample_values": df[col].dropna().unique()[:5].tolist()
-                }
-                for col in df.columns
-            }
+            col_stats = {}
+            for col in df.columns:
+                if col in numeric_cols:
+                    col_stats[col] = {
+                        "variance": round(float(df[col].var()), 2),
+                        "unique": int(df[col].nunique()),
+                        "sample_values": df[col].dropna().unique()[:5].tolist()
+                    }
+                else:
+                    col_stats[col] = {
+                        "unique": int(df[col].nunique()),
+                        "sample_values": df[col].dropna().unique()[:5].tolist()
+                    }
             useful_numeric = [c for c in numeric_cols if df[c].var() > 1.0]
             csv_info = (
                 f"CSV '{csv_name}': {len(df)} rows, columns: {list(df.columns)}\n"
